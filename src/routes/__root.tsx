@@ -17,13 +17,10 @@ export const Route = createRootRouteWithContext<{
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      {
-        title: "Coffret ERP — Gestion de production",
-      },
+      { title: "Coffret ERP — Gestion production" },
       {
         name: "description",
-        content:
-          "ERP de gestion de production : composants, coffrets, OF, livraisons",
+        content: "ERP production coffrets",
       },
     ],
     links: [{ rel: "stylesheet", href: appCss }],
@@ -48,7 +45,10 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   return (
     <>
-      <AppLayout />
+      <AppLayout>
+        <Outlet />
+      </AppLayout>
+
       <Toaster richColors position="top-right" />
     </>
   );
