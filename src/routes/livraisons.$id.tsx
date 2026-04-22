@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import erpMark from "@/assets/erp-mark.svg";
+import agecetLogo from "@/assets/logo_agecet_hands.jpg";
 
 export const Route = createFileRoute("/livraisons/$id")({
   head: () => ({
@@ -61,6 +61,16 @@ function LivraisonDetail() {
       return ship;
     },
   });
+
+  async function logAudit(action: string, payload: Record<string, unknown>) {
+    await sb.from("logs").insert({
+      entity_type: "shipment",
+      entity_id: shipment.data?.id ?? null,
+      action,
+      payload,
+      created_by: null,
+    });
+  }
 
   async function recalcShipmentTotals(shipmentId: string) {
     const { data: lines, error: eLines } = await sb
@@ -119,6 +129,14 @@ function LivraisonDetail() {
       .update({ total_weight: totalWeight, total_pallets: totalPallets })
       .eq("id", shipmentId);
     if (eShipment) throw eShipment;
+
+    if (data?.id) {
+      const { error: eLivraison } = await sb
+        .from("livraisons")
+        .update({ total_poids: totalWeight, total_palette: totalPallets })
+        .eq("id", data.id);
+      if (eLivraison) throw eLivraison;
+    }
   }
 
   const createShipment = useMutation({
@@ -148,6 +166,11 @@ function LivraisonDetail() {
         const { error: eLines } = await sb.from("shipment_lines").insert(linePayload);
         if (eLines) throw eLines;
       }
+
+      await logAudit("shipment_prepared", {
+        livraison_id: data.id,
+        reference: data.reference,
+      });
     },
     onSuccess: () => {
       toast.success("Expedition preparee");
@@ -184,6 +207,7 @@ function LivraisonDetail() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["shipment", id] });
+      qc.invalidateQueries({ queryKey: ["livraison", id] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -199,6 +223,9 @@ function LivraisonDetail() {
         computed_weight: true,
       });
       if (error) throw error;
+
+      await recalcShipmentTotals(shipment.data.id);
+      await logAudit("pallet_created", { label: `PAL-${next}` });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["shipment", id] });
@@ -226,10 +253,45 @@ function LivraisonDetail() {
       if (shipment.data?.id) {
         await recalcShipmentTotals(shipment.data.id);
       }
+
+      await logAudit("pallet_line_allocated", {
+        pallet_id: allocPaletteId,
+        shipment_line_id: allocLineId,
+        quantity: qty,
+      });
     },
     onSuccess: () => {
       setAllocQty("1");
       qc.invalidateQueries({ queryKey: ["shipment", id] });
+      qc.invalidateQueries({ queryKey: ["livraison", id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const removeAllocatedLine = useMutation({
+    mutationFn: async ({ palletLineId, palletId }: { palletLineId: string; palletId: string }) => {
+      if (!shipment.data?.id) throw new Error("Expedition introuvable");
+      const allowed = shipmentStatus === "draft" || shipmentStatus === "packing";
+      if (!allowed) {
+        throw new Error("Desallocation interdite hors draft/packing.");
+      }
+
+      const confirmRemove = window.confirm("Retirer cette ligne de la palette ?");
+      if (!confirmRemove) return;
+
+      const { error } = await sb.from("shipment_pallet_lines").delete().eq("id", palletLineId);
+      if (error) throw error;
+
+      await recalcShipmentTotals(shipment.data.id);
+      await logAudit("pallet_line_deallocated", {
+        pallet_line_id: palletLineId,
+        pallet_id: palletId,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["shipment", id] });
+      qc.invalidateQueries({ queryKey: ["livraison", id] });
+      toast.success("Ligne retiree de la palette");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -278,7 +340,7 @@ function LivraisonDetail() {
               <div className="font-mono text-xl font-semibold mt-1">{data.reference}</div>
             </div>
             <div className="text-right">
-              <img src={erpMark} alt="Coffret ERP" className="h-10 ml-auto mb-2" />
+              <img src={agecetLogo} alt="ESAT AGECET" className="h-10 ml-auto mb-2 rounded-sm" />
               <div className="font-display text-lg font-semibold">Coffret ERP</div>
               <div className="text-xs text-muted-foreground">Production de coffrets</div>
             </div>
@@ -334,12 +396,12 @@ function LivraisonDetail() {
           <div className="grid grid-cols-2 gap-8 mt-12 text-sm">
             <div>
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">Signature expéditeur</div>
-              <img src={erpMark} alt="Cachet ERP" className="h-8 mb-2 opacity-70" />
+              <img src={agecetLogo} alt="ESAT AGECET" className="h-8 mb-2 opacity-70 rounded-sm" />
               <div className="border-b border-border h-16"></div>
             </div>
             <div>
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">Signature destinataire</div>
-              <img src={erpMark} alt="Cachet client" className="h-8 mb-2 opacity-40" />
+              <img src={agecetLogo} alt="ESAT AGECET" className="h-8 mb-2 opacity-40 rounded-sm" />
               <div className="border-b border-border h-16">{data.signature ?? ""}</div>
             </div>
           </div>
@@ -435,6 +497,27 @@ function LivraisonDetail() {
                           : ""}
                         {p.computed_weight ? " · calcule" : " · manuel"}
                       </div>
+
+                      {(p.pallet_lines ?? []).length > 0 && (
+                        <div className="mt-2 border-t border-border pt-2 space-y-1">
+                          {(p.pallet_lines ?? []).map((pl: any) => (
+                            <div key={pl.id} className="flex items-center justify-between gap-2 text-xs">
+                              <span>Ligne {pl.shipment_line_id?.slice(0, 6)} · qte {fmtInt(pl.quantity)}</span>
+                              {(shipmentStatus === "draft" || shipmentStatus === "packing") && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => removeAllocatedLine.mutate({ palletLineId: pl.id, palletId: p.id })}
+                                  disabled={removeAllocatedLine.isPending}
+                                  className="h-7 px-2"
+                                >
+                                  Retirer de palette
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
