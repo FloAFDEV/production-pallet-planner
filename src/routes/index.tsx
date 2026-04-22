@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Boxes, Factory, Flame, TrendingDown } from "lucide-react";
 import { fmtInt } from "@/lib/format";
 import { productionStatusMeta } from "@/lib/domain";
+import { UI } from "@/lib/uiLabels";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -114,22 +115,22 @@ function Dashboard() {
     .sort((a, b) => a.projected - b.projected);
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <header className="mb-6 md:mb-8">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto">
+      <header className="mb-4 md:mb-5">
         <p className="text-xs uppercase tracking-widest text-muted-foreground">Vue d'ensemble</p>
-        <h1 className="text-3xl md:text-4xl font-display font-semibold mt-1">Dashboard</h1>
+        <h1 className="text-2xl md:text-3xl font-semibold mt-1">{UI.dashboard}</h1>
       </header>
 
-      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 md:gap-4 mb-6">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-2 md:gap-3 mb-4">
         <KPI icon={<Boxes className="h-4 w-4" />} label="Stock total (pièces)" value={fmtInt(totalStock)} />
         <KPI icon={<Boxes className="h-4 w-4 text-info" />} label="Stock réservé" value={fmtInt(totalReserve)} />
         <KPI icon={<Boxes className="h-4 w-4 text-success" />} label="Stock disponible" value={fmtInt(totalDisponible)} />
         <KPI icon={<TrendingDown className="h-4 w-4 text-warning" />} label="Composants en alerte" value={String(alertes.length)} accent={alertes.length > 0 ? "warning" : undefined} />
-        <KPI icon={<Factory className="h-4 w-4 text-info" />} label="Production en cours" value={String(enCours.length)} />
+        <KPI icon={<Factory className="h-4 w-4 text-info" />} label={`${UI.production_orders} en cours`} value={String(enCours.length)} />
         <KPI icon={<Flame className="h-4 w-4 text-destructive" />} label="Ordres prioritaires" value={String(prioritaires.length)} accent={prioritaires.length > 0 ? "destructive" : undefined} />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid lg:grid-cols-3 gap-3 mb-4">
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle className="text-base">Commandes clients ouvertes</CardTitle>
@@ -176,7 +177,7 @@ function Dashboard() {
         </Card>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-4 md:gap-6">
+      <div className="grid lg:grid-cols-2 gap-3 md:gap-4">
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -245,12 +246,12 @@ function Dashboard() {
 function KPI({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent?: "warning" | "destructive" }) {
   return (
     <Card className="overflow-hidden">
-      <CardContent className="p-4">
+      <CardContent className="p-3">
         <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
           {icon}
           <span>{label}</span>
         </div>
-        <div className={"mt-2 text-2xl md:text-3xl font-display font-semibold tabular " + (accent === "destructive" ? "text-destructive" : accent === "warning" ? "text-warning" : "")}>
+        <div className={"mt-1.5 text-xl md:text-2xl font-semibold tabular " + (accent === "destructive" ? "text-destructive" : accent === "warning" ? "text-warning" : "")}>
           {value}
         </div>
       </CardContent>

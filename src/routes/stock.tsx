@@ -127,9 +127,12 @@ function StockPage() {
                     <tr>
                       <th className="text-left p-3">Date</th>
                       <th className="text-left p-3">Composant</th>
+                      <th className="text-left p-3">Contexte</th>
                       <th className="text-center p-3">Type</th>
                       <th className="text-right p-3">Quantité</th>
                       <th className="text-left p-3">Motif</th>
+                      <th className="text-left p-3">Référence</th>
+                      <th className="text-left p-3">Auteur</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -140,19 +143,30 @@ function StockPage() {
                           <div className="font-medium">{m.composant?.name}</div>
                           <div className="text-xs text-muted-foreground font-mono">{m.composant?.reference}</div>
                         </td>
+                        <td className="p-3">
+                          <span className="inline-flex items-center rounded-sm border border-border bg-muted px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide">
+                            {m.entity_type ?? "n/a"}
+                          </span>
+                        </td>
                         <td className="p-3 text-center">
                           {m.type === "IN" ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-success/15 text-success border border-success/30">
+                            <span className="inline-flex items-center gap-1 rounded-sm border border-success/30 bg-success/15 px-2 py-0.5 text-[11px] font-medium">
                               <ArrowDown className="h-3 w-3" /> Entrée
                             </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-destructive/15 text-destructive border border-destructive/30">
+                          ) : m.type === "OUT" ? (
+                            <span className="inline-flex items-center gap-1 rounded-sm border border-destructive/30 bg-destructive/15 px-2 py-0.5 text-[11px] font-medium">
                               <ArrowUp className="h-3 w-3" /> Sortie
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-sm border border-border bg-muted px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide">
+                              {String(m.type ?? "n/a")}
                             </span>
                           )}
                         </td>
                         <td className="p-3 text-right tabular font-semibold">{fmtInt(m.quantity)}</td>
                         <td className="p-3 text-muted-foreground">{m.reason ?? "—"}</td>
+                        <td className="p-3 font-mono text-xs text-muted-foreground">{m.reference_id ?? "—"}</td>
+                        <td className="p-3 text-xs text-muted-foreground">{m.created_by ?? "Système"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -179,13 +193,38 @@ function MouvementDialog({ composants }: { composants: { id: string; reference: 
       const sb = supabase as any;
       const quantity = parseInt(qty, 10);
       if (!composantId || !quantity || quantity <= 0) throw new Error("Composant et quantité requis");
-      const { error } = await sb.from("mouvements").insert({
-        composant_id: composantId,
-        type,
-        quantity,
-        reason: reason || null,
-      });
-      if (error) throw error;
+
+      const payload = {
+        p_composant_id: composantId,
+        p_type: type,
+        p_quantity: quantity,
+        p_reason: reason || null,
+        p_entity_type: "manual_fix",
+        p_reference_id: null,
+      };
+
+      // Backward-compatible RPC names while backend converges.
+      const rpcCandidates = [
+        "record_stock_movement",
+        "create_stock_movement",
+        "create_inventory_movement",
+      ];
+
+      let lastError: any = null;
+      for (const fn of rpcCandidates) {
+        const { error } = await sb.rpc(fn, payload);
+        if (!error) return;
+        if (error.code === "PGRST202" || String(error.message ?? "").toLowerCase().includes("function")) {
+          lastError = error;
+          continue;
+        }
+        throw error;
+      }
+
+      throw new Error(
+        `Aucune RPC mouvement disponible (${rpcCandidates.join(", ")}). Vérifier la fonction serveur de ledger.` +
+          (lastError ? ` (${lastError.message})` : "")
+      );
     },
     onSuccess: () => {
       toast.success("Mouvement enregistré");
@@ -204,6 +243,7 @@ function MouvementDialog({ composants }: { composants: { id: string; reference: 
       </DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Entrée / sortie de stock</DialogTitle></DialogHeader>
+        <p className="text-xs text-muted-foreground">Ecriture via RPC serveur uniquement. Aucune insertion directe front.</p>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <Label>Composant</Label>

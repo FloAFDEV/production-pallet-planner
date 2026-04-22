@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Plus, Printer, Trash2, Truck } from "lucide-react";
 import { fmtDate, fmtInt, fmtKg, fmtPalette } from "@/lib/format";
 import { formatClientAddress, livraisonStatusMeta, type LivraisonStatus } from "@/lib/domain";
+import { UI } from "@/lib/uiLabels";
 
 export const Route = createFileRoute("/livraisons")({
   head: () => ({
@@ -26,6 +27,7 @@ export const Route = createFileRoute("/livraisons")({
 
 function LivraisonsPage() {
   const sb = supabase as any;
+  const [exportYear, setExportYear] = useState(String(new Date().getFullYear()));
 
   const livraisons = useQuery({
     queryKey: ["livraisons"],
@@ -39,14 +41,76 @@ function LivraisonsPage() {
     },
   });
 
+  const exportCompta = useMutation({
+    mutationFn: async () => {
+      const year = Number(exportYear);
+      if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+        throw new Error("Annee export invalide");
+      }
+
+      const start = `${year}-01-01`;
+      const end = `${year}-12-31`;
+
+      const { data, error } = await sb
+        .from("livraisons")
+        .select("reference,date,status,total_palette,total_poids,client_entity:clients(name),items:livraison_items(quantity,coffret:coffrets(reference,name))")
+        .gte("date", start)
+        .lte("date", end)
+        .eq("status", "delivered")
+        .order("date", { ascending: true });
+      if (error) throw error;
+
+      const rows: string[] = [];
+      rows.push("reference_bl;date_livraison;client;produit;quantite;poids_total;nombre_palettes;statut");
+
+      for (const liv of (data ?? []) as any[]) {
+        const client = (liv.client_entity?.name ?? "").replace(/;/g, ",");
+        const date = liv.date ?? "";
+        const status = liv.status ?? "";
+        for (const it of (liv.items ?? []) as any[]) {
+          const produit = (it.coffret?.reference ?? it.coffret?.name ?? "").replace(/;/g, ",");
+          rows.push([
+            liv.reference ?? "",
+            date,
+            client,
+            produit,
+            String(it.quantity ?? 0),
+            String(liv.total_poids ?? 0),
+            String(liv.total_palette ?? 0),
+            status,
+          ].join(";"));
+        }
+      }
+
+      const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `export_bl_delivered_${year}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    },
+    onSuccess: () => toast.success("Export comptable genere"),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
       <header className="mb-6 flex items-end justify-between flex-wrap gap-3">
         <div>
-          <p className="text-xs uppercase tracking-widest text-muted-foreground">Expédition</p>
-          <h1 className="text-3xl md:text-4xl font-display font-semibold mt-1">Livraisons</h1>
+          <p className="text-xs uppercase tracking-widest text-muted-foreground">Logistique</p>
+          <h1 className="text-3xl md:text-4xl font-display font-semibold mt-1">{UI.livraisons} / Bons de livraison</h1>
         </div>
-        <NewLivraisonDialog />
+        <div className="flex items-end gap-2 flex-wrap">
+          <div>
+            <Label className="text-xs text-muted-foreground">Export annee</Label>
+            <Input className="w-28 h-9" value={exportYear} onChange={(e) => setExportYear(e.target.value)} />
+          </div>
+          <Button variant="outline" onClick={() => exportCompta.mutate()} disabled={exportCompta.isPending}>Exporter CSV livres</Button>
+          <NewLivraisonDialog />
+        </div>
       </header>
 
       <div className="grid gap-4">
@@ -181,13 +245,24 @@ function NewLivraisonDialog() {
           client: selectedClient.name,
           adresse,
           date,
-          status,
+          status: status || "draft",
           total_palette: totals.palettes,
           total_poids: totals.poids,
         })
         .select("id")
         .single();
       if (e1) throw e1;
+
+      await sb.from("logs").insert({
+        entity_type: "livraison",
+        entity_id: liv.id,
+        action: "livraison_created",
+        payload: {
+          status: status || "draft",
+          total_palette: totals.palettes,
+          total_poids: totals.poids,
+        },
+      });
 
       const { error: e2 } = await sb.from("livraison_items").insert(
         totals.items.map((it) => ({

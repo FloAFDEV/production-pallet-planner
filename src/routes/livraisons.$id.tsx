@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import agecetLogo from "@/assets/logo_agecet_hands.jpg";
+import { UI } from "@/lib/uiLabels";
 
 export const Route = createFileRoute("/livraisons/$id")({
   head: () => ({
@@ -70,6 +71,34 @@ function LivraisonDetail() {
       payload,
       created_by: null,
     });
+  }
+
+  async function snapshotLivraison(event: string, reason?: string) {
+    if (!data) return;
+    const snapshot = {
+      livraison: {
+        id: data.id,
+        reference: data.reference,
+        status: data.status,
+        date: data.date,
+        client_id: data.client_id,
+        client: data.client,
+        adresse: data.adresse,
+        total_palette: data.total_palette,
+        total_poids: data.total_poids,
+      },
+      items: data.items ?? [],
+      shipment: shipment.data ?? null,
+    };
+
+    const { error } = await sb.from("logs").insert({
+      entity_type: "livraison",
+      entity_id: data.id,
+      action: `livraison_${event}`,
+      payload: { reason: reason ?? null, snapshot },
+      created_by: null,
+    });
+    if (error) throw error;
   }
 
   async function recalcShipmentTotals(shipmentId: string) {
@@ -142,6 +171,9 @@ function LivraisonDetail() {
   const createShipment = useMutation({
     mutationFn: async () => {
       if (!data) throw new Error("BL introuvable");
+      if (["delivered", "cancelled"].includes(String(data.status ?? ""))) {
+        throw new Error("BL fige: expedition non modifiable.");
+      }
 
       const { data: ship, error: eShip } = await sb
         .from("shipments")
@@ -182,6 +214,9 @@ function LivraisonDetail() {
   const updateShipmentStatus = useMutation({
     mutationFn: async (status: ShipmentStatus) => {
       if (!shipment.data?.id) throw new Error("Expedition introuvable");
+      if (["delivered", "cancelled"].includes(String(data?.status ?? ""))) {
+        throw new Error("BL fige: expedition non modifiable.");
+      }
 
       const from = (shipment.data.status ?? "draft") as ShipmentStatus;
       const allowedFrom: Record<ShipmentStatus, ShipmentStatus[]> = {
@@ -200,6 +235,9 @@ function LivraisonDetail() {
         if (hasUnallocated) {
           throw new Error("Impossible de passer en ready/shipped: des quantites restent non allouees.");
         }
+        if ((shipment.data?.pallets ?? []).length === 0) {
+          throw new Error("Impossible de passer en ready/shipped: aucune palette creee.");
+        }
       }
 
       const { error } = await sb.from("shipments").update({ status }).eq("id", shipment.data.id);
@@ -215,6 +253,9 @@ function LivraisonDetail() {
   const addPalette = useMutation({
     mutationFn: async () => {
       if (!shipment.data?.id) throw new Error("Expedition introuvable");
+      if (["delivered", "cancelled"].includes(String(data?.status ?? ""))) {
+        throw new Error("BL fige: expedition non modifiable.");
+      }
       const next = ((shipment.data.pallets ?? []).length + 1).toString().padStart(3, "0");
       const { error } = await sb.from("shipment_pallets").insert({
         shipment_id: shipment.data.id,
@@ -235,6 +276,9 @@ function LivraisonDetail() {
 
   const allocateLine = useMutation({
     mutationFn: async () => {
+      if (["delivered", "cancelled"].includes(String(data?.status ?? ""))) {
+        throw new Error("BL fige: expedition non modifiable.");
+      }
       const qty = parseInt(allocQty, 10);
       if (!allocPaletteId || !allocLineId || !qty || qty <= 0) throw new Error("Allocation invalide");
 
@@ -271,6 +315,9 @@ function LivraisonDetail() {
   const removeAllocatedLine = useMutation({
     mutationFn: async ({ palletLineId, palletId }: { palletLineId: string; palletId: string }) => {
       if (!shipment.data?.id) throw new Error("Expedition introuvable");
+      if (["delivered", "cancelled"].includes(String(data?.status ?? ""))) {
+        throw new Error("BL fige: expedition non modifiable.");
+      }
       const allowed = shipmentStatus === "draft" || shipmentStatus === "packing";
       if (!allowed) {
         throw new Error("Desallocation interdite hors draft/packing.");
@@ -296,10 +343,45 @@ function LivraisonDetail() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const updateLivraisonStatus = useMutation({
+    mutationFn: async ({ status, reason }: { status: string; reason?: string }) => {
+      if (!data) throw new Error("BL introuvable");
+      if (String(data.status ?? "") === "delivered" && status !== "cancelled") {
+        throw new Error("BL deja livre: correction via annulation tracee uniquement.");
+      }
+
+      await snapshotLivraison("before_status_change", reason);
+
+      const { error } = await sb
+        .from("livraisons")
+        .update({ status })
+        .eq("id", data.id);
+      if (error) throw error;
+
+      await sb.from("logs").insert({
+        entity_type: "livraison",
+        entity_id: data.id,
+        action: "livraison_status_changed",
+        payload: {
+          from: data.status ?? null,
+          to: status,
+          reason: reason ?? null,
+        },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["livraison", id] });
+      qc.invalidateQueries({ queryKey: ["livraisons"] });
+      toast.success("Statut BL mis a jour");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const shipmentStatus = (shipment.data?.status ?? "draft") as ShipmentStatus;
   const isEditable = shipmentStatus === "draft";
   const isPacking = shipmentStatus === "packing";
   const isReadonly = shipmentStatus === "shipped";
+  const isLivraisonLocked = ["delivered", "cancelled"].includes(String(data?.status ?? ""));
 
   const remainingByLine = useMemo(() => {
     const map = new Map<string, number>();
@@ -313,6 +395,18 @@ function LivraisonDetail() {
     }
     return map;
   }, [shipment.data]);
+
+  const lineRecap = useMemo(() => {
+    const lines = (shipment.data?.lines ?? []) as any[];
+    const recap = lines.map((l) => {
+      const total = Number(l.quantity ?? 0);
+      const remaining = Number(remainingByLine.get(l.id) ?? 0);
+      const allocated = total - remaining;
+      const state = remaining === 0 ? "ok" : allocated > 0 ? "partial" : "blocked";
+      return { id: l.id, total, allocated, remaining, state };
+    });
+    return recap;
+  }, [shipment.data, remainingByLine]);
 
   if (isLoading || !data) {
     return <div className="p-8 text-sm text-muted-foreground">Chargement…</div>;
@@ -344,6 +438,16 @@ function LivraisonDetail() {
               <div className="font-display text-lg font-semibold">Coffret ERP</div>
               <div className="text-xs text-muted-foreground">Production de coffrets</div>
             </div>
+          </div>
+
+          <div className="mb-4 print:hidden flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => updateLivraisonStatus.mutate({ status: "prepared" })} disabled={isLivraisonLocked || updateLivraisonStatus.isPending}>Marquer prepare</Button>
+            <Button size="sm" variant="outline" onClick={() => updateLivraisonStatus.mutate({ status: "loaded" })} disabled={isLivraisonLocked || updateLivraisonStatus.isPending}>Marquer charge</Button>
+            <Button size="sm" variant="outline" onClick={() => updateLivraisonStatus.mutate({ status: "delivered" })} disabled={String(data.status ?? "") === "cancelled" || updateLivraisonStatus.isPending}>Valider livre</Button>
+            <Button size="sm" variant="outline" onClick={() => {
+              const reason = window.prompt("Motif d'annulation du BL");
+              if (reason && reason.trim()) updateLivraisonStatus.mutate({ status: "cancelled", reason });
+            }} disabled={updateLivraisonStatus.isPending}>Annuler BL</Button>
           </div>
 
           <div className="grid grid-cols-2 gap-6 mb-6 text-sm">
@@ -428,10 +532,10 @@ function LivraisonDetail() {
             ) : (
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-2 print:hidden">
-                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("draft")} disabled={isReadonly || updateShipmentStatus.isPending}>Draft</Button>
-                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("packing")} disabled={isReadonly || updateShipmentStatus.isPending}>Packing</Button>
-                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("ready")} disabled={isReadonly || updateShipmentStatus.isPending}>Ready</Button>
-                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("shipped")} disabled={isReadonly || updateShipmentStatus.isPending}>Shipped</Button>
+                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("draft")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Draft</Button>
+                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("packing")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Packing</Button>
+                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("ready")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Ready</Button>
+                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("shipped")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Shipped</Button>
                 </div>
 
                 {isEditable && (
@@ -472,6 +576,18 @@ function LivraisonDetail() {
                         <Input type="number" min="1" value={allocQty} onChange={(e) => setAllocQty(e.target.value)} />
                       </div>
                       <Button size="sm" onClick={() => allocateLine.mutate()} disabled={allocateLine.isPending}>Affecter</Button>
+                    </div>
+
+                    <div className="mt-3 space-y-1">
+                      {lineRecap.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between text-xs rounded border border-border px-2 py-1 bg-background/70">
+                          <span className="font-mono">Ligne {r.id.slice(0, 6)}</span>
+                          <span>total {fmtInt(r.total)} · alloue {fmtInt(r.allocated)} · reste {fmtInt(r.remaining)}</span>
+                          <span className={r.state === "ok" ? "text-success" : r.state === "partial" ? "text-warning" : "text-destructive"}>
+                            {r.state === "ok" ? "OK" : r.state === "partial" ? "Partiel" : "Bloquant"}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}

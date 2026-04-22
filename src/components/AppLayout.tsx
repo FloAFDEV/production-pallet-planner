@@ -1,24 +1,23 @@
 import { Link, Outlet } from "@tanstack/react-router";
 import { LayoutDashboard, Factory, Boxes, Truck, Package } from "lucide-react";
+import { UI } from "@/lib/uiLabels";
 
 const NAV = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/production", label: "Production", icon: Factory },
-  { to: "/stock", label: "Stock", icon: Boxes },
-  { to: "/livraisons", label: "Livraisons", icon: Truck },
+  { to: "/", label: UI.dashboard, icon: LayoutDashboard },
+  { to: "/production", label: UI.production_orders, icon: Factory },
+  { to: "/stock", label: UI.stock, icon: Boxes },
+  { to: "/livraisons", label: UI.livraisons, icon: Truck },
 ] as const;
 
 export function AppLayout() {
   return (
     <div className="min-h-screen flex bg-background">
-      <aside className="hidden md:flex w-60 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-        <div className="px-5 py-5 border-b border-sidebar-border flex items-center gap-2">
-          <div className="h-9 w-9 rounded-md grid place-items-center bg-amber-500/20">
-            <Package className="h-5 w-5 text-primary" />
-          </div>
+      <aside className="hidden md:flex w-56 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
+        <div className="px-4 py-4 border-b border-sidebar-border flex items-center gap-2">
+          <Package className="h-4 w-4 text-primary" />
 
           <div>
-            <div className="font-display font-semibold leading-tight">
+            <div className="font-semibold leading-tight text-sm">
               Coffret ERP
             </div>
             <div className="text-[11px] text-sidebar-foreground/60 uppercase tracking-wider">
@@ -27,16 +26,16 @@ export function AppLayout() {
           </div>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex-1 p-2 space-y-1">
           {NAV.map(({ to, label, icon: Icon }) => {
             return (
               <Link
                 key={to}
                 to={to}
                 activeOptions={{ exact: to === "/" }}
-                className="flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors"
-                activeProps={{ className: "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors bg-sidebar-accent text-accent font-medium" }}
-                inactiveProps={{ className: "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground" }}
+                className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm text-xs transition-colors"
+                activeProps={{ className: "flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm text-xs transition-colors bg-sidebar-accent text-foreground font-semibold" }}
+                inactiveProps={{ className: "flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm text-xs transition-colors text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground" }}
               >
                 <Icon className="h-4 w-4" />
                 {label}
@@ -45,7 +44,7 @@ export function AppLayout() {
           })}
         </nav>
 
-        <div className="p-4 text-[11px] text-sidebar-foreground/50">
+        <div className="p-3 text-[10px] text-sidebar-foreground/50 border-t border-sidebar-border">
           v1.0 · ERP coffrets
         </div>
       </aside>
@@ -54,8 +53,8 @@ export function AppLayout() {
       <div className="md:hidden fixed top-0 inset-x-0 z-30 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
-            <Package className="h-5 w-5 text-accent" />
-            <span className="font-display font-semibold">
+            <Package className="h-4 w-4 text-primary" />
+            <span className="font-semibold text-sm">
               Coffret ERP
             </span>
           </div>
