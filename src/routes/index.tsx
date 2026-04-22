@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Boxes, Factory, Flame, TrendingDown } from "lucide-react";
 import { fmtInt } from "@/lib/format";
 
-
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [

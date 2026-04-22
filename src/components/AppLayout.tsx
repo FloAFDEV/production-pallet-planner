@@ -17,7 +17,7 @@ export function AppLayout() {
   return (
     <div className="min-h-screen flex bg-background">
 
-      {/* SIDEBAR */}
+      {/* SIDEBAR (inchangé) */}
       <aside className="hidden md:flex w-60 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         <div className="px-5 py-5 border-b border-sidebar-border flex items-center gap-2">
           <div className="h-9 w-9 rounded-md grid place-items-center bg-amber-500/20">
@@ -54,9 +54,13 @@ export function AppLayout() {
             );
           })}
         </nav>
+
+        <div className="p-4 text-[11px] opacity-50">
+          v1.0 · ERP coffrets
+        </div>
       </aside>
 
-      {/* MOBILE */}
+      {/* MOBILE HEADER (inchangé) */}
       <div className="md:hidden fixed top-0 inset-x-0 z-30 bg-sidebar border-b">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
@@ -87,7 +91,7 @@ export function AppLayout() {
         </div>
       </div>
 
-      {/* CONTENT */}
+      {/* CONTENT FIX IMPORTANT */}
       <main className="flex-1 pt-[88px] md:pt-0">
         <Outlet />
       </main>

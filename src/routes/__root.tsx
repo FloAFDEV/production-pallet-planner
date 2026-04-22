@@ -6,7 +6,6 @@ import {
 } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
 
-import { AppLayout } from "@/components/AppLayout";
 import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 
@@ -30,16 +29,14 @@ export const Route = createRootRouteWithContext<{
   component: RootComponent,
 });
 
-function RootShell() {
+function RootShell({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr">
       <head>
         <HeadContent />
       </head>
-      <body>
-        <Outlet />
-        <Scripts />
-      </body>
+      <body>{children}</body>
+      <Scripts />
     </html>
   );
 }
@@ -47,7 +44,7 @@ function RootShell() {
 function RootComponent() {
   return (
     <>
-      <AppLayout />
+      <Outlet />
       <Toaster richColors position="top-right" />
     </>
   );
