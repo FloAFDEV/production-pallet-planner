@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation } from "@tanstack/react-router";
+import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { LayoutDashboard, Factory, Boxes, Truck, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -10,23 +10,36 @@ const NAV = [
 ] as const;
 
 export function AppLayout() {
-  const { pathname } = useLocation();
+  const pathname = useRouterState({
+    select: (s) => s.location.pathname,
+  });
 
   return (
     <div className="min-h-screen flex bg-background">
       <aside className="hidden md:flex w-60 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         <div className="px-5 py-5 border-b border-sidebar-border flex items-center gap-2">
-          <div className="h-9 w-9 rounded-md grid place-items-center" style={{ background: "var(--gradient-amber)" }}>
+          <div
+            className="h-9 w-9 rounded-md grid place-items-center"
+            style={{ background: "var(--gradient-amber)" }}
+          >
             <Package className="h-5 w-5 text-primary" />
           </div>
+
           <div>
-            <div className="font-display font-semibold leading-tight">Coffret ERP</div>
-            <div className="text-[11px] text-sidebar-foreground/60 uppercase tracking-wider">Production</div>
+            <div className="font-display font-semibold leading-tight">
+              Coffret ERP
+            </div>
+            <div className="text-[11px] text-sidebar-foreground/60 uppercase tracking-wider">
+              Production
+            </div>
           </div>
         </div>
+
         <nav className="flex-1 p-3 space-y-1">
           {NAV.map(({ to, label, icon: Icon }) => {
-            const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
+            const active =
+              to === "/" ? pathname === "/" : pathname.startsWith(to);
+
             return (
               <Link
                 key={to}
@@ -44,12 +57,13 @@ export function AppLayout() {
             );
           })}
         </nav>
+
         <div className="p-4 text-[11px] text-sidebar-foreground/50">
           v1.0 · ERP coffrets
         </div>
       </aside>
 
-      {/* Mobile top nav */}
+      {/* Mobile */}
       <div className="md:hidden fixed top-0 inset-x-0 z-30 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
@@ -57,9 +71,12 @@ export function AppLayout() {
             <span className="font-display font-semibold">Coffret ERP</span>
           </div>
         </div>
+
         <div className="flex border-t border-sidebar-border overflow-x-auto">
           {NAV.map(({ to, label, icon: Icon }) => {
-            const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
+            const active =
+              to === "/" ? pathname === "/" : pathname.startsWith(to);
+
             return (
               <Link
                 key={to}
