@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StockRouteImport } from './routes/stock'
+import { Route as CoffretsRouteImport } from './routes/coffrets'
 import { Route as ProductionRouteImport } from './routes/production'
 import { Route as LivraisonsRouteImport } from './routes/livraisons'
 import { Route as IndexRouteImport } from './routes/index'
@@ -18,6 +19,11 @@ import { Route as LivraisonsIdRouteImport } from './routes/livraisons.$id'
 const StockRoute = StockRouteImport.update({
   id: '/stock',
   path: '/stock',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CoffretsRoute = CoffretsRouteImport.update({
+  id: '/coffrets',
+  path: '/coffrets',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProductionRoute = ProductionRouteImport.update({
@@ -44,6 +50,7 @@ const LivraisonsIdRoute = LivraisonsIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/livraisons': typeof LivraisonsRouteWithChildren
+  '/coffrets': typeof CoffretsRoute
   '/production': typeof ProductionRoute
   '/stock': typeof StockRoute
   '/livraisons/$id': typeof LivraisonsIdRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/livraisons': typeof LivraisonsRouteWithChildren
+  '/coffrets': typeof CoffretsRoute
   '/production': typeof ProductionRoute
   '/stock': typeof StockRoute
   '/livraisons/$id': typeof LivraisonsIdRoute
@@ -59,18 +67,20 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/livraisons': typeof LivraisonsRouteWithChildren
+  '/coffrets': typeof CoffretsRoute
   '/production': typeof ProductionRoute
   '/stock': typeof StockRoute
   '/livraisons/$id': typeof LivraisonsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/livraisons' | '/production' | '/stock' | '/livraisons/$id'
+  fullPaths: '/' | '/coffrets' | '/livraisons' | '/production' | '/stock' | '/livraisons/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/livraisons' | '/production' | '/stock' | '/livraisons/$id'
+  to: '/' | '/coffrets' | '/livraisons' | '/production' | '/stock' | '/livraisons/$id'
   id:
     | '__root__'
     | '/'
+    | '/coffrets'
     | '/livraisons'
     | '/production'
     | '/stock'
@@ -79,6 +89,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CoffretsRoute: typeof CoffretsRoute
   LivraisonsRoute: typeof LivraisonsRouteWithChildren
   ProductionRoute: typeof ProductionRoute
   StockRoute: typeof StockRoute
@@ -98,6 +109,13 @@ declare module '@tanstack/react-router' {
       path: '/production'
       fullPath: '/production'
       preLoaderRoute: typeof ProductionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/coffrets': {
+      id: '/coffrets'
+      path: '/coffrets'
+      fullPath: '/coffrets'
+      preLoaderRoute: typeof CoffretsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/livraisons': {
@@ -137,6 +155,7 @@ const LivraisonsRouteWithChildren = LivraisonsRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
+  CoffretsRoute: CoffretsRoute,
   IndexRoute: IndexRoute,
   LivraisonsRoute: LivraisonsRouteWithChildren,
   ProductionRoute: ProductionRoute,

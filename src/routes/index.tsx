@@ -25,6 +25,7 @@ function Dashboard() {
     queryKey: ["composants"],
     queryFn: async () => {
       const { data, error } = await sb.from("composants").select("*").order("reference");
+      console.log("[dashboard] composants", { data, error });
       if (error) throw error;
       return data;
     },
@@ -39,6 +40,7 @@ function Dashboard() {
         .in("status", ["in_progress", "priority", "draft", "planned"])
         .order("status", { ascending: false })
         .order("created_at", { ascending: false });
+      console.log("[dashboard] production_orders(active)", { data, error });
       if (error) throw error;
       return data;
     },
@@ -51,6 +53,7 @@ function Dashboard() {
         .from("orders")
         .select("id, reference, status, created_at, client:clients(name), lines:order_lines(quantity, product_variant_id, variant:product_variants(reference,name))")
         .order("created_at", { ascending: false });
+      console.log("[dashboard] orders(open)", { data, error });
       if (error) throw error;
       return data;
     },
@@ -64,6 +67,7 @@ function Dashboard() {
         .select("id, product_variant_id, version, is_active, lines:bom_lines(composant_id, quantity)")
         .eq("is_active", true)
         .order("version", { ascending: false });
+      console.log("[dashboard] bom_versions(active)", { data, error });
       if (error) throw error;
       return data;
     },

@@ -29,6 +29,7 @@ function LivraisonDetail() {
   const [allocPaletteId, setAllocPaletteId] = useState<string>("");
   const [allocLineId, setAllocLineId] = useState<string>("");
   const [allocQty, setAllocQty] = useState<string>("1");
+  const [newPaletteTypeId, setNewPaletteTypeId] = useState<string>("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["livraison", id],
@@ -60,6 +61,15 @@ function LivraisonDetail() {
         throw error;
       }
       return ship;
+    },
+  });
+
+  const paletteTypes = useQuery({
+    queryKey: ["palette_types"],
+    queryFn: async () => {
+      const { data, error } = await sb.from("palette_types").select("*").order("label");
+      if (error) throw error;
+      return data as any[];
     },
   });
 
@@ -284,17 +294,28 @@ function LivraisonDetail() {
       if (["delivered", "cancelled"].includes(String(data?.status ?? ""))) {
         throw new Error("BL fige: expedition non modifiable.");
       }
+
+      const selectedType = (paletteTypes.data ?? []).find((p: any) => p.id === newPaletteTypeId) ?? null;
+      if (!selectedType) throw new Error("Selectionner un type de palette");
+
       const next = ((shipment.data.pallets ?? []).length + 1).toString().padStart(3, "0");
       const { error } = await sb.from("shipment_pallets").insert({
         shipment_id: shipment.data.id,
         label: `PAL-${next}`,
-        type: "standard",
+        type: selectedType.label,
+        width: Number(selectedType.width ?? 0),
+        height: Number(selectedType.height ?? 0),
+        depth: Number(selectedType.length ?? 0),
         computed_weight: true,
       });
       if (error) throw error;
 
       await recalcShipmentTotals(shipment.data.id);
-      await logAudit("pallet_created", { label: `PAL-${next}` });
+      await logAudit("pallet_created", {
+        label: `PAL-${next}`,
+        palette_type_id: selectedType.id,
+        palette_type_label: selectedType.label,
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["shipment", id] });
@@ -436,6 +457,19 @@ function LivraisonDetail() {
     return recap;
   }, [shipment.data, remainingByLine]);
 
+  const palletSummaryByType = useMemo(() => {
+    const map = new Map<string, { count: number; totalWeight: number }>();
+    for (const p of (shipment.data?.pallets ?? []) as any[]) {
+      const key = String(p.type ?? "non_defini");
+      const prev = map.get(key) ?? { count: 0, totalWeight: 0 };
+      map.set(key, {
+        count: prev.count + 1,
+        totalWeight: prev.totalWeight + Number(p.weight ?? 0),
+      });
+    }
+    return Array.from(map.entries()).map(([type, v]) => ({ type, ...v }));
+  }, [shipment.data]);
+
   if (isLoading || !data) {
     return <div className="p-8 text-sm text-muted-foreground">Chargement…</div>;
   }
@@ -569,7 +603,22 @@ function LivraisonDetail() {
                 {isEditable && (
                   <div className="rounded-md border border-border bg-muted/20 p-3 print:hidden">
                     <p className="text-xs text-muted-foreground mb-2">Mode edition (draft): palettes modifiables.</p>
-                    <Button size="sm" onClick={() => addPalette.mutate()} disabled={addPalette.isPending}>Ajouter une palette</Button>
+                    <div className="grid md:grid-cols-4 gap-2 items-end">
+                      <div className="md:col-span-3">
+                        <div className="text-xs text-muted-foreground mb-1">Type de palette</div>
+                        <Select value={newPaletteTypeId} onValueChange={setNewPaletteTypeId}>
+                          <SelectTrigger><SelectValue placeholder="Selectionner un type" /></SelectTrigger>
+                          <SelectContent>
+                            {(paletteTypes.data ?? []).map((p: any) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.label} · {fmtInt(p.length)}x{fmtInt(p.width)}x{fmtInt(p.height)} · max {fmtKg(p.poids_max)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button size="sm" onClick={() => addPalette.mutate()} disabled={addPalette.isPending || !newPaletteTypeId}>Ajouter</Button>
+                    </div>
                   </div>
                 )}
 
@@ -665,6 +714,21 @@ function LivraisonDetail() {
                     </div>
                   );
                 })}
+
+                {palletSummaryByType.length > 0 && (
+                  <div className="rounded-md border border-border p-3">
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Recap palettes par type</div>
+                    <div className="space-y-1">
+                      {palletSummaryByType.map((r) => (
+                        <div key={r.type} className="flex items-center justify-between text-xs border border-border rounded-sm px-2 py-1">
+                          <span>{r.type}</span>
+                          <span>{fmtInt(r.count)} palette(s)</span>
+                          <span>{fmtKg(r.totalWeight)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

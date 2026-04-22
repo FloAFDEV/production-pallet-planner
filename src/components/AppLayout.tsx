@@ -1,11 +1,12 @@
 import { Link, Outlet } from "@tanstack/react-router";
-import { LayoutDashboard, Factory, Boxes, Truck, Package } from "lucide-react";
+import { LayoutDashboard, Factory, Boxes, Truck, Package, Layers } from "lucide-react";
 import { UI } from "@/lib/uiLabels";
 import agecetLogo from "@/assets/logo_agecet_hands.jpg";
 
 const NAV = [
   { to: "/", label: UI.dashboard, icon: LayoutDashboard },
   { to: "/production", label: UI.production_orders, icon: Factory },
+  { to: "/coffrets", label: "Coffrets", icon: Layers },
   { to: "/stock", label: UI.stock, icon: Boxes },
   { to: "/livraisons", label: UI.livraisons, icon: Truck },
 ] as const;
