@@ -18,15 +18,35 @@ if (lines.length < 2) {
   process.exit(1);
 }
 
+function parseLine(line) {
+  // Preferred format: TSV (4 columns)
+  if (line.includes("\t")) {
+    const parts = line.split("\t");
+    if (parts.length < 4) return null;
+    const coffretRef = (parts[0] ?? "").trim();
+    const pieceRef = (parts[1] ?? "").trim();
+    const pieceName = (parts[2] ?? "").trim();
+    const qty = Number((parts[3] ?? "").trim().replace(",", "."));
+    return { coffretRef, pieceRef, pieceName, qty };
+  }
+
+  // Fallback format: free text with spaces, where qty is last token.
+  // Example: ASBNEP1101 PMFONDV250001 FOND V5 250X250 1
+  const m = line.match(/^(\S+)\s+(\S+)\s+(.+?)\s+(-?\d+(?:[.,]\d+)?)$/);
+  if (!m) return null;
+  const coffretRef = m[1].trim();
+  const pieceRef = m[2].trim();
+  const pieceName = m[3].trim();
+  const qty = Number(m[4].replace(",", "."));
+  return { coffretRef, pieceRef, pieceName, qty };
+}
+
 const rows = [];
 for (let i = 1; i < lines.length; i += 1) {
-  const parts = lines[i].split("\t");
-  if (parts.length < 4) continue;
+  const parsed = parseLine(lines[i]);
+  if (!parsed) continue;
 
-  const coffretRef = (parts[0] ?? "").trim();
-  const pieceRef = (parts[1] ?? "").trim();
-  const pieceName = (parts[2] ?? "").trim();
-  const qty = Number((parts[3] ?? "").trim().replace(",", "."));
+  const { coffretRef, pieceRef, pieceName, qty } = parsed;
 
   if (!coffretRef || !pieceRef || !Number.isFinite(qty) || qty <= 0) continue;
 
