@@ -1,6 +1,7 @@
 import { Link, Outlet } from "@tanstack/react-router";
 import { LayoutDashboard, Factory, Boxes, Truck, Package } from "lucide-react";
 import { UI } from "@/lib/uiLabels";
+import agecetLogo from "@/assets/logo_agecet_hands.jpg";
 
 const NAV = [
   { to: "/", label: UI.dashboard, icon: LayoutDashboard },
@@ -14,7 +15,7 @@ export function AppLayout() {
     <div className="min-h-screen flex bg-background">
       <aside className="hidden md:flex w-56 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         <div className="px-4 py-4 border-b border-sidebar-border flex items-center gap-2">
-          <Package className="h-4 w-4 text-primary" />
+          <img src={agecetLogo} alt="ESAT AGECET" className="h-7 w-7 rounded-sm object-cover border border-sidebar-border" />
 
           <div>
             <div className="font-semibold leading-tight text-sm">
@@ -53,7 +54,7 @@ export function AppLayout() {
       <div className="md:hidden fixed top-0 inset-x-0 z-30 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
-            <Package className="h-4 w-4 text-primary" />
+            <img src={agecetLogo} alt="ESAT AGECET" className="h-6 w-6 rounded-sm object-cover border border-sidebar-border" />
             <span className="font-semibold text-sm">
               Coffret ERP
             </span>

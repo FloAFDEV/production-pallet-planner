@@ -14,6 +14,7 @@ import { Plus, Printer, Trash2, Truck } from "lucide-react";
 import { fmtDate, fmtInt, fmtKg, fmtPalette } from "@/lib/format";
 import { formatClientAddress, livraisonStatusMeta, type LivraisonStatus } from "@/lib/domain";
 import { UI } from "@/lib/uiLabels";
+import agecetLogo from "@/assets/logo_agecet_hands.jpg";
 
 export const Route = createFileRoute("/livraisons")({
   head: () => ({
@@ -29,12 +30,12 @@ function LivraisonsPage() {
   const sb = supabase as any;
   const [exportYear, setExportYear] = useState(String(new Date().getFullYear()));
 
-  const productionOrders = useQuery({
-    queryKey: ["production_orders", "history"],
+  const commercialOrders = useQuery({
+    queryKey: ["orders", "history"],
     queryFn: async () => {
       const { data, error } = await sb
-        .from("production_orders")
-        .select("id, quantity, status, coffret_id")
+        .from("orders")
+        .select("id, created_at, status, client_id, client:clients(id,name), lines:order_lines(quantity, product_variant_id)")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -121,9 +122,10 @@ function LivraisonsPage() {
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
       <header className="mb-6 flex items-end justify-between flex-wrap gap-3">
         <div>
+          <img src={agecetLogo} alt="ESAT AGECET" className="h-10 w-auto rounded-sm border border-border mb-2" />
           <p className="text-xs uppercase tracking-widest text-muted-foreground">Logistique</p>
           <h1 className="text-3xl md:text-4xl font-display font-semibold mt-1">{UI.livraisons} / Bons de livraison</h1>
-          <p className="text-xs text-muted-foreground mt-1">Les clients se renseignent dans l'onglet Clients, puis sont selectionnables a la creation d'un BL.</p>
+          <p className="text-xs text-muted-foreground mt-1">Les clients se renseignent ici (bouton Nouveau client), puis sont selectionnables a la creation d'un BL.</p>
         </div>
         <div className="flex items-end gap-2 flex-wrap">
           <div>
@@ -139,7 +141,7 @@ function LivraisonsPage() {
       <ClientHistoryPanel
         livraisons={(livraisons.data ?? []) as any[]}
         clients={(clientsList.data ?? []) as any[]}
-        productionOrders={(productionOrders.data ?? []) as any[]}
+        commercialOrders={(commercialOrders.data ?? []) as any[]}
       />
 
       <div className="grid gap-4">
@@ -215,11 +217,11 @@ function LivraisonsPage() {
 function ClientHistoryPanel({
   livraisons,
   clients,
-  productionOrders,
+  commercialOrders,
 }: {
   livraisons: any[];
   clients: any[];
-  productionOrders: any[];
+  commercialOrders: any[];
 }) {
   const rows = useMemo(() => {
     const byClient = new Map<string, {
@@ -268,7 +270,16 @@ function ClientHistoryPanel({
       byClient.set(key, row);
     }
 
-    const prodDone = (productionOrders ?? []).filter((o) => ["done", "completed"].includes(String(o.status ?? "")));
+    const ordersByClient = new Map<string, number>();
+    for (const o of commercialOrders ?? []) {
+      const status = String(o.status ?? "").toLowerCase();
+      if (["cancelled", "canceled"].includes(status)) continue;
+      const key = o.client_id ?? o.client?.id;
+      if (!key) continue;
+      const current = ordersByClient.get(key) ?? 0;
+      const units = ((o.lines ?? []) as any[]).reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+      ordersByClient.set(key, current + units);
+    }
 
     return Array.from(byClient.entries())
       .map(([id, r]) => {
@@ -279,9 +290,7 @@ function ClientHistoryPanel({
           ? null
           : Math.round((last.getTime() - first.getTime()) / (1000 * 60 * 60 * 24) / (dates.length - 1));
 
-        const indirectProductionUnits = prodDone
-          .filter((o) => r.coffretIds.has(o.coffret_id))
-          .reduce((s, o) => s + Number(o.quantity ?? 0), 0);
+        const indirectProductionUnits = ordersByClient.get(id) ?? 0;
 
         return {
           id,
@@ -297,12 +306,12 @@ function ClientHistoryPanel({
       })
       .filter((r) => r.deliveries > 0)
       .sort((a, b) => b.deliveries - a.deliveries);
-  }, [clients, livraisons, productionOrders]);
+  }, [clients, livraisons, commercialOrders]);
 
   return (
     <Card className="mb-4">
       <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="text-base">Historique clients (BL / volumes / poids / frequence / OF indirecte)</CardTitle>
+        <CardTitle className="text-base">Historique clients (BL / volumes / poids / frequence / demande via commandes)</CardTitle>
         <span className="text-xs text-muted-foreground">{rows.length} client(s) actif(s)</span>
       </CardHeader>
       <CardContent className="p-0">
@@ -316,7 +325,7 @@ function ClientHistoryPanel({
                 <th className="text-right p-2.5">Poids total</th>
                 <th className="text-right p-2.5">Palettes</th>
                 <th className="text-right p-2.5">Frequence (j)</th>
-                <th className="text-right p-2.5">OF indirecte (u.)</th>
+                <th className="text-right p-2.5">Demande cmd (u.)</th>
                 <th className="text-right p-2.5">Dernier BL</th>
               </tr>
             </thead>
