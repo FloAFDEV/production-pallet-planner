@@ -1,13 +1,11 @@
 import {
   createRootRouteWithContext,
-  Outlet,
-  HeadContent,
+    HeadContent,
   Scripts,
 } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
-
-import { AppLayout } from "@/components/AppLayout";
 import { Toaster } from "@/components/ui/sonner";
+import { AppLayout } from "@/components/AppLayout";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRouteWithContext<{
@@ -18,14 +16,9 @@ export const Route = createRootRouteWithContext<{
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Coffret ERP — Gestion production" },
-      {
-        name: "description",
-        content: "ERP production coffrets",
-      },
     ],
     links: [{ rel: "stylesheet", href: appCss }],
   }),
-
   shellComponent: RootShell,
   component: RootComponent,
 });
@@ -36,8 +29,10 @@ function RootShell({ children }: { children: React.ReactNode }) {
       <head>
         <HeadContent />
       </head>
-      <body>{children}</body>
-      <Scripts />
+      <body>
+        {children}
+        <Scripts />
+      </body>
     </html>
   );
 }
@@ -45,9 +40,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   return (
     <>
-      <AppLayout>
-        <Outlet />
-      </AppLayout>
+      <AppLayout />
       <Toaster richColors position="top-right" />
     </>
   );
