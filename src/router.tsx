@@ -1,4 +1,4 @@
-import { createRouter } from "@tanstack/react-router";
+import { Link, createRouter } from "@tanstack/react-router";
 import { QueryClient } from "@tanstack/react-query";
 import { routeTree } from "./routeTree.gen";
 
@@ -31,6 +31,27 @@ function DefaultErrorComponent({
   );
 }
 
+function DefaultNotFoundComponent() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="max-w-md text-center">
+        <h1 className="text-2xl font-bold text-foreground">Page introuvable</h1>
+
+        <p className="mt-2 text-sm text-muted-foreground">
+          La route demandee ne correspond a aucune page de l'application.
+        </p>
+
+        <Link
+          to="/"
+          className="mt-6 inline-flex rounded-md bg-primary px-4 py-2 text-primary-foreground"
+        >
+          Retour au dashboard
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -40,9 +61,16 @@ export const queryClient = new QueryClient({
   },
 });
 
+const basepath =
+  import.meta.env.BASE_URL && import.meta.env.BASE_URL !== "/"
+    ? import.meta.env.BASE_URL.replace(/\/$/, "")
+    : undefined;
+
 export const router = createRouter({
   routeTree,
   context: { queryClient },
+  basepath,
   scrollRestoration: true,
   defaultErrorComponent: DefaultErrorComponent,
+  defaultNotFoundComponent: DefaultNotFoundComponent,
 });

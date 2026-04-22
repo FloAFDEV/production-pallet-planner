@@ -1,6 +1,5 @@
-import { Link, Outlet, useLocation } from "@tanstack/react-router";
+import { Link, Outlet } from "@tanstack/react-router";
 import { LayoutDashboard, Factory, Boxes, Truck, Package } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -10,8 +9,6 @@ const NAV = [
 ] as const;
 
 export function AppLayout() {
-  const { pathname } = useLocation();
-
   return (
     <div className="min-h-screen flex bg-background">
       <aside className="hidden md:flex w-60 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
@@ -32,19 +29,14 @@ export function AppLayout() {
 
         <nav className="flex-1 p-3 space-y-1">
           {NAV.map(({ to, label, icon: Icon }) => {
-            const active =
-              to === "/" ? pathname === "/" : pathname.startsWith(to);
-
             return (
               <Link
                 key={to}
                 to={to}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
-                  active
-                    ? "bg-sidebar-accent text-accent font-medium"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                )}
+                activeOptions={{ exact: to === "/" }}
+                className="flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors"
+                activeProps={{ className: "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors bg-sidebar-accent text-accent font-medium" }}
+                inactiveProps={{ className: "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground" }}
               >
                 <Icon className="h-4 w-4" />
                 {label}
@@ -71,17 +63,14 @@ export function AppLayout() {
 
         <div className="flex border-t border-sidebar-border overflow-x-auto">
           {NAV.map(({ to, label, icon: Icon }) => {
-            const active =
-              to === "/" ? pathname === "/" : pathname.startsWith(to);
-
             return (
               <Link
                 key={to}
                 to={to}
-                className={cn(
-                  "flex-1 min-w-[80px] flex flex-col items-center gap-1 py-2 text-xs",
-                  active ? "text-accent" : "text-sidebar-foreground/70"
-                )}
+                activeOptions={{ exact: to === "/" }}
+                className="flex-1 min-w-[80px] flex flex-col items-center gap-1 py-2 text-xs"
+                activeProps={{ className: "flex-1 min-w-[80px] flex flex-col items-center gap-1 py-2 text-xs text-accent" }}
+                inactiveProps={{ className: "flex-1 min-w-[80px] flex flex-col items-center gap-1 py-2 text-xs text-sidebar-foreground/70" }}
               >
                 <Icon className="h-4 w-4" />
                 {label}
