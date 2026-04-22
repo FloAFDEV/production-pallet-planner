@@ -10,11 +10,24 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StockRouteImport } from './routes/stock'
+import { Route as ProductionRouteImport } from './routes/production'
+import { Route as LivraisonsRouteImport } from './routes/livraisons'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LivraisonsIdRouteImport } from './routes/livraisons.$id'
 
 const StockRoute = StockRouteImport.update({
   id: '/stock',
   path: '/stock',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProductionRoute = ProductionRouteImport.update({
+  id: '/production',
+  path: '/production',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LivraisonsRoute = LivraisonsRouteImport.update({
+  id: '/livraisons',
+  path: '/livraisons',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -22,30 +35,52 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LivraisonsIdRoute = LivraisonsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => LivraisonsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/livraisons': typeof LivraisonsRouteWithChildren
+  '/production': typeof ProductionRoute
   '/stock': typeof StockRoute
+  '/livraisons/$id': typeof LivraisonsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/livraisons': typeof LivraisonsRouteWithChildren
+  '/production': typeof ProductionRoute
   '/stock': typeof StockRoute
+  '/livraisons/$id': typeof LivraisonsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/livraisons': typeof LivraisonsRouteWithChildren
+  '/production': typeof ProductionRoute
   '/stock': typeof StockRoute
+  '/livraisons/$id': typeof LivraisonsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/stock'
+  fullPaths: '/' | '/livraisons' | '/production' | '/stock' | '/livraisons/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/stock'
-  id: '__root__' | '/' | '/stock'
+  to: '/' | '/livraisons' | '/production' | '/stock' | '/livraisons/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/livraisons'
+    | '/production'
+    | '/stock'
+    | '/livraisons/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LivraisonsRoute: typeof LivraisonsRouteWithChildren
+  ProductionRoute: typeof ProductionRoute
   StockRoute: typeof StockRoute
 }
 
@@ -58,6 +93,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StockRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/production': {
+      id: '/production'
+      path: '/production'
+      fullPath: '/production'
+      preLoaderRoute: typeof ProductionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/livraisons': {
+      id: '/livraisons'
+      path: '/livraisons'
+      fullPath: '/livraisons'
+      preLoaderRoute: typeof LivraisonsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -65,11 +114,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/livraisons/$id': {
+      id: '/livraisons/$id'
+      path: '/$id'
+      fullPath: '/livraisons/$id'
+      preLoaderRoute: typeof LivraisonsIdRouteImport
+      parentRoute: typeof LivraisonsRoute
+    }
   }
 }
 
+interface LivraisonsRouteChildren {
+  LivraisonsIdRoute: typeof LivraisonsIdRoute
+}
+
+const LivraisonsRouteChildren: LivraisonsRouteChildren = {
+  LivraisonsIdRoute: LivraisonsIdRoute,
+}
+
+const LivraisonsRouteWithChildren = LivraisonsRoute._addFileChildren(
+  LivraisonsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LivraisonsRoute: LivraisonsRouteWithChildren,
+  ProductionRoute: ProductionRoute,
   StockRoute: StockRoute,
 }
 export const routeTree = rootRouteImport
