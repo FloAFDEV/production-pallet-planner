@@ -45,7 +45,9 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   return (
     <>
-      <Outlet />
+      <AppLayout>
+        <Outlet />
+      </AppLayout>
       <Toaster richColors position="top-right" />
     </>
   );
