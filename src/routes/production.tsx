@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AlertCircle, CheckCircle2, Flame, PlayCircle, Sparkles } from "lucide-react";
 import { fmtInt, fmtKg, fmtPalette } from "@/lib/format";
 import { StatusBadge } from "./index";
-import { productionStatusMeta, type ProductionStatus } from "@/lib/domain";
+import type { ProductionStatus } from "@/lib/domain";
 
 export const Route = createFileRoute("/production")({
   head: () => ({
@@ -110,6 +110,8 @@ function ProductionPage() {
       const payload: Record<string, unknown> = { status };
       if (status === "in_progress") payload.started_at = new Date().toISOString();
       if (status === "done") payload.finished_at = new Date().toISOString();
+      if (status === "paused") payload.updated_at = new Date().toISOString();
+      if (status === "canceled" || status === "cancelled") payload.updated_at = new Date().toISOString();
 
       const { error } = await sb.from("production_orders").update(payload).eq("id", orderId);
       if (error) throw error;
@@ -178,6 +180,7 @@ function ProductionPage() {
                   <SelectItem value="draft">Brouillon</SelectItem>
                   <SelectItem value="in_progress">En cours</SelectItem>
                   <SelectItem value="priority">Prioritaire</SelectItem>
+                    <SelectItem value="paused">En pause</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -205,8 +208,10 @@ function ProductionPage() {
                   { key: "all", label: "Tous" },
                   { key: "draft", label: "Brouillons" },
                   { key: "in_progress", label: "En cours" },
+                  { key: "paused", label: "En pause" },
                   { key: "priority", label: "Prioritaires" },
                   { key: "done", label: "Termines" },
+                  { key: "canceled", label: "Annules" },
                 ].map((f) => (
                   <button
                     key={f.key}
@@ -253,18 +258,36 @@ function ProductionPage() {
                                 <PlayCircle className="h-3.5 w-3.5" /> Lancer
                               </Button>
                             )}
+                            {(o.status === "in_progress" || o.status === "priority") && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "paused" })} disabled={setOrderStatus.isPending}>
+                                Pause
+                              </Button>
+                            )}
+                            {o.status === "paused" && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "in_progress" })} disabled={setOrderStatus.isPending}>
+                                Reprendre
+                              </Button>
+                            )}
                             {(o.status === "draft" || o.status === "in_progress") && (
                               <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "priority" })} disabled={setOrderStatus.isPending}>
                                 Prioriser
                               </Button>
                             )}
-                            {(o.status === "in_progress" || o.status === "priority") && (
+                            {(o.status === "in_progress" || o.status === "priority" || o.status === "paused") && (
                               <Button size="sm" variant="outline" onClick={() => validateOrder.mutate(o.id)} disabled={validateOrder.isPending}>
                                 <CheckCircle2 className="h-3.5 w-3.5" /> Valider
                               </Button>
                             )}
+                            {(o.status === "draft" || o.status === "paused") && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "canceled" })} disabled={setOrderStatus.isPending}>
+                                Annuler
+                              </Button>
+                            )}
                             {o.status === "done" && (
                               <span className="text-xs text-success inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Termine</span>
+                            )}
+                            {(o.status === "canceled" || o.status === "cancelled") && (
+                              <span className="text-xs text-muted-foreground inline-flex items-center gap-1">Annule</span>
                             )}
                           </div>
                         </td>

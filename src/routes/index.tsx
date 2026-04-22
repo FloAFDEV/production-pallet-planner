@@ -43,6 +43,31 @@ function Dashboard() {
     },
   });
 
+  const commercialOrders = useQuery({
+    queryKey: ["orders", "open"],
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("orders")
+        .select("id, reference, status, created_at, client:clients(name), lines:order_lines(quantity, product_variant_id, variant:product_variants(reference,name))")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const activeBomVersions = useQuery({
+    queryKey: ["bom_versions", "active"],
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("bom_versions")
+        .select("id, product_variant_id, version, is_active, lines:bom_lines(composant_id, quantity)")
+        .eq("is_active", true)
+        .order("version", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const totalStock = (composants.data ?? []).reduce((s: number, c: any) => s + Number(c.stock ?? 0), 0);
   const totalReserve = (composants.data ?? []).reduce((s: number, c: any) => s + Number(c.reserved_stock ?? 0), 0);
   const totalDisponible = totalStock - totalReserve;
@@ -53,6 +78,40 @@ function Dashboard() {
   const ordersList: any[] = (orders.data ?? []) as any[];
   const enCours = ordersList.filter((o) => o.status === "in_progress");
   const prioritaires = ordersList.filter((o) => o.status === "priority");
+  const openCommercialOrders = ((commercialOrders.data ?? []) as any[]).filter((o) => !["done", "delivered", "canceled", "cancelled"].includes(String(o.status ?? "")));
+
+  const componentDemandByOrder = new Map<string, number>();
+  const bomByVariant = new Map<string, any>();
+  for (const bom of (activeBomVersions.data ?? []) as any[]) {
+    if (!bom.product_variant_id) continue;
+    if (!bomByVariant.has(bom.product_variant_id)) {
+      bomByVariant.set(bom.product_variant_id, bom);
+    }
+  }
+
+  for (const order of openCommercialOrders) {
+    for (const line of (order.lines ?? []) as any[]) {
+      const bom = bomByVariant.get(line.product_variant_id);
+      if (!bom) continue;
+      for (const bomLine of (bom.lines ?? []) as any[]) {
+        const current = componentDemandByOrder.get(bomLine.composant_id) ?? 0;
+        componentDemandByOrder.set(
+          bomLine.composant_id,
+          current + Number(bomLine.quantity ?? 0) * Number(line.quantity ?? 0)
+        );
+      }
+    }
+  }
+
+  const projectedRuptures = ((composants.data ?? []) as any[])
+    .map((c) => {
+      const demand = componentDemandByOrder.get(c.id) ?? 0;
+      const dispo = Number(c.stock ?? 0) - Number(c.reserved_stock ?? 0);
+      const projected = dispo - demand;
+      return { ...c, demand, dispo, projected };
+    })
+    .filter((c) => c.projected < 0)
+    .sort((a, b) => a.projected - b.projected);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
@@ -68,6 +127,53 @@ function Dashboard() {
         <KPI icon={<TrendingDown className="h-4 w-4 text-warning" />} label="Composants en alerte" value={String(alertes.length)} accent={alertes.length > 0 ? "warning" : undefined} />
         <KPI icon={<Factory className="h-4 w-4 text-info" />} label="Production en cours" value={String(enCours.length)} />
         <KPI icon={<Flame className="h-4 w-4 text-destructive" />} label="Ordres prioritaires" value={String(prioritaires.length)} accent={prioritaires.length > 0 ? "destructive" : undefined} />
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-4 mb-6">
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle className="text-base">Commandes clients ouvertes</CardTitle>
+            <Badge variant="outline">{openCommercialOrders.length}</Badge>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            {(openCommercialOrders.slice(0, 3) as any[]).map((o) => (
+              <div key={o.id} className="py-1.5 flex items-center justify-between gap-2">
+                <span className="font-mono text-xs">{o.reference ?? o.id.slice(0, 8)}</span>
+                <span className="truncate">{o.client?.name ?? "Client"}</span>
+              </div>
+            ))}
+            {openCommercialOrders.length === 0 && <p>Aucune commande en attente.</p>}
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive" /> Rupture previsionnelle (BOM x commandes)
+            </CardTitle>
+            <Badge variant="outline">{projectedRuptures.length}</Badge>
+          </CardHeader>
+          <CardContent>
+            {projectedRuptures.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucune rupture previsionnelle detectee.</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {projectedRuptures.slice(0, 6).map((c) => (
+                  <li key={c.id} className="py-2.5 flex items-center justify-between text-sm">
+                    <div>
+                      <div className="font-medium">{c.name}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{c.reference}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-mono text-xs text-muted-foreground">besoin {fmtInt(c.demand)} / dispo {fmtInt(c.dispo)}</div>
+                      <div className="font-mono font-semibold text-destructive">manque {fmtInt(Math.abs(c.projected))}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4 md:gap-6">

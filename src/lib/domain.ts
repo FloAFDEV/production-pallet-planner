@@ -14,6 +14,8 @@ export type LivraisonStatus =
   | "delivered"
   | "cancelled";
 
+export type ShipmentStatus = "draft" | "packing" | "ready" | "shipped";
+
 export const productionStatusMeta: Record<string, { label: string; cls: string }> = {
   draft: { label: "Brouillon", cls: "bg-muted text-muted-foreground" },
   planned: { label: "Planifie", cls: "bg-muted text-muted-foreground border border-border" },
@@ -30,6 +32,13 @@ export const livraisonStatusMeta: Record<string, { label: string; cls: string }>
   loaded: { label: "Charge", cls: "bg-warning/15 text-warning border border-warning/30" },
   delivered: { label: "Livre", cls: "bg-success/15 text-success border border-success/30" },
   cancelled: { label: "Annule", cls: "bg-muted text-muted-foreground border border-border" },
+};
+
+export const shipmentStatusMeta: Record<string, { label: string; cls: string }> = {
+  draft: { label: "Brouillon", cls: "bg-muted text-muted-foreground" },
+  packing: { label: "En palettisation", cls: "bg-info/15 text-info border border-info/30" },
+  ready: { label: "Pret expedition", cls: "bg-warning/15 text-warning border border-warning/30" },
+  shipped: { label: "Expedie", cls: "bg-success/15 text-success border border-success/30" },
 };
 
 export function formatClientAddress(client: {
