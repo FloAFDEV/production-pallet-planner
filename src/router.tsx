@@ -38,3 +38,4 @@ export const getRouter = () => {
     defaultErrorComponent: DefaultErrorComponent,
   });
 };
+export const router = getRouter();
