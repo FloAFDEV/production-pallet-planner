@@ -29,14 +29,16 @@ export const Route = createRootRouteWithContext<{
   component: RootComponent,
 });
 
-function RootShell({ children }: { children: React.ReactNode }) {
+function RootShell() {
   return (
     <html lang="fr">
       <head>
         <HeadContent />
       </head>
-      <body>{children}</body>
-      <Scripts />
+      <body>
+        <Outlet />
+        <Scripts />
+      </body>
     </html>
   );
 }
@@ -44,7 +46,6 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   return (
     <>
-      <Outlet />
       <Toaster richColors position="top-right" />
     </>
   );
