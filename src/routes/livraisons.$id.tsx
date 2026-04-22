@@ -220,9 +220,10 @@ function LivraisonDetail() {
 
       const from = (shipment.data.status ?? "draft") as ShipmentStatus;
       const allowedFrom: Record<ShipmentStatus, ShipmentStatus[]> = {
-        draft: ["packing"],
-        packing: ["draft", "ready"],
-        ready: ["packing", "shipped"],
+        draft: ["packing", "packed"],
+        packing: ["draft", "ready", "packed"],
+        packed: ["draft", "ready", "packing"],
+        ready: ["packing", "packed", "shipped"],
         shipped: [],
       };
       if (!allowedFrom[from].includes(status) && from !== status) {
@@ -240,8 +241,35 @@ function LivraisonDetail() {
         }
       }
 
-      const { error } = await sb.from("shipments").update({ status }).eq("id", shipment.data.id);
-      if (error) throw error;
+      const rpcCandidates = [
+        { fn: "change_shipment_status", payload: { shipment_id: shipment.data.id, new_status: status } },
+        { fn: "change_shipment_status", payload: { p_shipment_id: shipment.data.id, p_new_status: status } },
+        { fn: "set_shipment_status", payload: { shipment_id: shipment.data.id, status } },
+        { fn: "transition_shipment_status", payload: { p_shipment_id: shipment.data.id, p_status: status } },
+      ] as const;
+
+      let transitionApplied = false;
+      let lastError: any = null;
+      for (const c of rpcCandidates) {
+        const { error } = await sb.rpc(c.fn, c.payload);
+        if (!error) {
+          transitionApplied = true;
+          break;
+        }
+        const msg = String(error.message ?? "").toLowerCase();
+        if (error.code === "PGRST202" || msg.includes("function") || msg.includes("does not exist")) {
+          lastError = error;
+          continue;
+        }
+        throw error;
+      }
+
+      if (!transitionApplied) {
+        throw new Error(
+          "RPC de transition indisponible (change_shipment_status / set_shipment_status / transition_shipment_status)." +
+            (lastError ? ` ${lastError.message}` : "")
+        );
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["shipment", id] });
@@ -379,7 +407,7 @@ function LivraisonDetail() {
 
   const shipmentStatus = (shipment.data?.status ?? "draft") as ShipmentStatus;
   const isEditable = shipmentStatus === "draft";
-  const isPacking = shipmentStatus === "packing";
+  const isPacking = shipmentStatus === "packing" || shipmentStatus === "packed";
   const isReadonly = shipmentStatus === "shipped";
   const isLivraisonLocked = ["delivered", "cancelled"].includes(String(data?.status ?? ""));
 
@@ -533,7 +561,7 @@ function LivraisonDetail() {
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-2 print:hidden">
                   <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("draft")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Draft</Button>
-                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("packing")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Packing</Button>
+                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("packed")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Packed</Button>
                   <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("ready")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Ready</Button>
                   <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("shipped")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Shipped</Button>
                 </div>

@@ -29,6 +29,27 @@ function LivraisonsPage() {
   const sb = supabase as any;
   const [exportYear, setExportYear] = useState(String(new Date().getFullYear()));
 
+  const productionOrders = useQuery({
+    queryKey: ["production_orders", "history"],
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("production_orders")
+        .select("id, quantity, status, coffret_id")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const clientsList = useQuery({
+    queryKey: ["clients"],
+    queryFn: async () => {
+      const { data, error } = await sb.from("clients").select("id,name").order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const livraisons = useQuery({
     queryKey: ["livraisons"],
     queryFn: async () => {
@@ -102,6 +123,7 @@ function LivraisonsPage() {
         <div>
           <p className="text-xs uppercase tracking-widest text-muted-foreground">Logistique</p>
           <h1 className="text-3xl md:text-4xl font-display font-semibold mt-1">{UI.livraisons} / Bons de livraison</h1>
+          <p className="text-xs text-muted-foreground mt-1">Les clients se renseignent dans l'onglet Clients, puis sont selectionnables a la creation d'un BL.</p>
         </div>
         <div className="flex items-end gap-2 flex-wrap">
           <div>
@@ -109,9 +131,16 @@ function LivraisonsPage() {
             <Input className="w-28 h-9" value={exportYear} onChange={(e) => setExportYear(e.target.value)} />
           </div>
           <Button variant="outline" onClick={() => exportCompta.mutate()} disabled={exportCompta.isPending}>Exporter CSV livres</Button>
+          <CreateClientDialog />
           <NewLivraisonDialog />
         </div>
       </header>
+
+      <ClientHistoryPanel
+        livraisons={(livraisons.data ?? []) as any[]}
+        clients={(clientsList.data ?? []) as any[]}
+        productionOrders={(productionOrders.data ?? []) as any[]}
+      />
 
       <div className="grid gap-4">
         {(livraisons.data ?? []).length === 0 && (
@@ -180,6 +209,215 @@ function LivraisonsPage() {
         ))}
       </div>
     </div>
+  );
+}
+
+function ClientHistoryPanel({
+  livraisons,
+  clients,
+  productionOrders,
+}: {
+  livraisons: any[];
+  clients: any[];
+  productionOrders: any[];
+}) {
+  const rows = useMemo(() => {
+    const byClient = new Map<string, {
+      name: string;
+      deliveries: number;
+      totalWeight: number;
+      totalPallets: number;
+      totalUnits: number;
+      dates: Date[];
+      coffretIds: Set<string>;
+    }>();
+
+    for (const c of clients) {
+      byClient.set(c.id, {
+        name: c.name,
+        deliveries: 0,
+        totalWeight: 0,
+        totalPallets: 0,
+        totalUnits: 0,
+        dates: [],
+        coffretIds: new Set<string>(),
+      });
+    }
+
+    for (const l of livraisons) {
+      const key = l.client_id ?? `legacy:${l.client ?? "Sans client"}`;
+      const row = byClient.get(key) ?? {
+        name: l.client_entity?.name ?? l.client ?? "Sans client",
+        deliveries: 0,
+        totalWeight: 0,
+        totalPallets: 0,
+        totalUnits: 0,
+        dates: [],
+        coffretIds: new Set<string>(),
+      };
+      row.deliveries += 1;
+      row.totalWeight += Number(l.total_poids ?? 0);
+      row.totalPallets += Number(l.total_palette ?? 0);
+      row.dates.push(new Date(l.date));
+
+      for (const it of (l.items ?? []) as any[]) {
+        row.totalUnits += Number(it.quantity ?? 0);
+        if (it.coffret_id) row.coffretIds.add(it.coffret_id);
+      }
+
+      byClient.set(key, row);
+    }
+
+    const prodDone = (productionOrders ?? []).filter((o) => ["done", "completed"].includes(String(o.status ?? "")));
+
+    return Array.from(byClient.entries())
+      .map(([id, r]) => {
+        const dates = [...r.dates].sort((a, b) => a.getTime() - b.getTime());
+        const first = dates[0];
+        const last = dates[dates.length - 1];
+        const avgFreqDays = dates.length <= 1
+          ? null
+          : Math.round((last.getTime() - first.getTime()) / (1000 * 60 * 60 * 24) / (dates.length - 1));
+
+        const indirectProductionUnits = prodDone
+          .filter((o) => r.coffretIds.has(o.coffret_id))
+          .reduce((s, o) => s + Number(o.quantity ?? 0), 0);
+
+        return {
+          id,
+          name: r.name,
+          deliveries: r.deliveries,
+          totalWeight: r.totalWeight,
+          totalPallets: r.totalPallets,
+          totalUnits: r.totalUnits,
+          avgFreqDays,
+          lastDate: last,
+          indirectProductionUnits,
+        };
+      })
+      .filter((r) => r.deliveries > 0)
+      .sort((a, b) => b.deliveries - a.deliveries);
+  }, [clients, livraisons, productionOrders]);
+
+  return (
+    <Card className="mb-4">
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle className="text-base">Historique clients (BL / volumes / poids / frequence / OF indirecte)</CardTitle>
+        <span className="text-xs text-muted-foreground">{rows.length} client(s) actif(s)</span>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-muted/70 text-[11px] uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="text-left p-2.5">Client</th>
+                <th className="text-right p-2.5">BL</th>
+                <th className="text-right p-2.5">Volume (u.)</th>
+                <th className="text-right p-2.5">Poids total</th>
+                <th className="text-right p-2.5">Palettes</th>
+                <th className="text-right p-2.5">Frequence (j)</th>
+                <th className="text-right p-2.5">OF indirecte (u.)</th>
+                <th className="text-right p-2.5">Dernier BL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t border-border">
+                  <td className="p-2.5 font-medium">{r.name}</td>
+                  <td className="p-2.5 text-right tabular">{fmtInt(r.deliveries)}</td>
+                  <td className="p-2.5 text-right tabular">{fmtInt(r.totalUnits)}</td>
+                  <td className="p-2.5 text-right tabular">{fmtKg(r.totalWeight)}</td>
+                  <td className="p-2.5 text-right tabular">{fmtPalette(r.totalPallets)}</td>
+                  <td className="p-2.5 text-right tabular">{r.avgFreqDays == null ? "—" : fmtInt(r.avgFreqDays)}</td>
+                  <td className="p-2.5 text-right tabular">{fmtInt(r.indirectProductionUnits)}</td>
+                  <td className="p-2.5 text-right tabular text-muted-foreground">{r.lastDate ? fmtDate(r.lastDate.toISOString()) : "—"}</td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td className="p-3 text-sm text-muted-foreground" colSpan={8}>Aucun historique client exploitable pour le moment.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CreateClientDialog() {
+  const sb = supabase as any;
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [city, setCity] = useState("");
+  const [country, setCountry] = useState("France");
+
+  const create = useMutation({
+    mutationFn: async () => {
+      if (!name.trim()) throw new Error("Nom client requis");
+      const { error } = await sb.from("clients").insert({
+        name: name.trim(),
+        address: address.trim() || null,
+        postal_code: postalCode.trim() || null,
+        city: city.trim() || null,
+        country: country.trim() || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      toast.success("Client cree");
+      setOpen(false);
+      setName("");
+      setAddress("");
+      setPostalCode("");
+      setCity("");
+      setCountry("France");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline">Nouveau client</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Creer un client</DialogTitle></DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="space-y-1">
+            <Label>Nom</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label>Adresse</Label>
+            <Textarea rows={2} value={address} onChange={(e) => setAddress(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-1">
+              <Label>Code postal</Label>
+              <Input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Ville</Label>
+              <Input value={city} onChange={(e) => setCity(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Pays</Label>
+              <Input value={country} onChange={(e) => setCountry(e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+          <Button onClick={() => create.mutate()} disabled={create.isPending}>Creer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
