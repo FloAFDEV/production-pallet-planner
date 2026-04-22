@@ -1,4 +1,4 @@
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { LayoutDashboard, Factory, Boxes, Truck, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -9,15 +9,14 @@ const NAV = [
   { to: "/livraisons", label: "Livraisons", icon: Truck },
 ] as const;
 
-export function AppLayout() {
+export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
 
   return (
     <div className="min-h-screen flex bg-background">
-
-      {/* SIDEBAR (inchangé) */}
+      {/* SIDEBAR */}
       <aside className="hidden md:flex w-60 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         <div className="px-5 py-5 border-b border-sidebar-border flex items-center gap-2">
           <div className="h-9 w-9 rounded-md grid place-items-center bg-amber-500/20">
@@ -60,7 +59,7 @@ export function AppLayout() {
         </div>
       </aside>
 
-      {/* MOBILE HEADER (inchangé) */}
+      {/* MOBILE */}
       <div className="md:hidden fixed top-0 inset-x-0 z-30 bg-sidebar border-b">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
@@ -69,7 +68,7 @@ export function AppLayout() {
           </div>
         </div>
 
-        <div className="flex border-t overflow-x-auto">
+        <div className="flex overflow-x-auto border-t">
           {NAV.map(({ to, label, icon: Icon }) => {
             const active =
               to === "/" ? pathname === "/" : pathname.startsWith(to);
@@ -91,11 +90,10 @@ export function AppLayout() {
         </div>
       </div>
 
-      {/* CONTENT FIX IMPORTANT */}
+      {/* CONTENT */}
       <main className="flex-1 pt-[88px] md:pt-0">
-        <Outlet />
+        {children}
       </main>
-
     </div>
   );
 }

@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
 
+import { AppLayout } from "@/components/AppLayout";
 import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 
@@ -44,7 +45,11 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   return (
     <>
-      <Outlet />
+      {/* IMPORTANT : layout + router content ensemble */}
+      <AppLayout>
+        <Outlet />
+      </AppLayout>
+
       <Toaster richColors position="top-right" />
     </>
   );
