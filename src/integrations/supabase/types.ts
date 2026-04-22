@@ -14,16 +14,285 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      coffrets: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          nb_par_palette: number
+          poids_coffret: number
+          poids_palette: number
+          reference: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          nb_par_palette?: number
+          poids_coffret?: number
+          poids_palette?: number
+          reference: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          nb_par_palette?: number
+          poids_coffret?: number
+          poids_palette?: number
+          reference?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      composants: {
+        Row: {
+          created_at: string
+          id: string
+          min_stock: number
+          name: string
+          poids_unitaire: number
+          reference: string
+          stock: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          min_stock?: number
+          name: string
+          poids_unitaire?: number
+          reference: string
+          stock?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          min_stock?: number
+          name?: string
+          poids_unitaire?: number
+          reference?: string
+          stock?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      livraison_items: {
+        Row: {
+          coffret_id: string
+          id: string
+          livraison_id: string
+          palettes: number
+          poids: number
+          quantity: number
+        }
+        Insert: {
+          coffret_id: string
+          id?: string
+          livraison_id: string
+          palettes?: number
+          poids?: number
+          quantity: number
+        }
+        Update: {
+          coffret_id?: string
+          id?: string
+          livraison_id?: string
+          palettes?: number
+          poids?: number
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "livraison_items_coffret_id_fkey"
+            columns: ["coffret_id"]
+            isOneToOne: false
+            referencedRelation: "coffrets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "livraison_items_livraison_id_fkey"
+            columns: ["livraison_id"]
+            isOneToOne: false
+            referencedRelation: "livraisons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      livraisons: {
+        Row: {
+          adresse: string
+          client: string
+          created_at: string
+          date: string
+          id: string
+          reference: string
+          signature: string | null
+          total_palette: number
+          total_poids: number
+        }
+        Insert: {
+          adresse: string
+          client: string
+          created_at?: string
+          date?: string
+          id?: string
+          reference?: string
+          signature?: string | null
+          total_palette?: number
+          total_poids?: number
+        }
+        Update: {
+          adresse?: string
+          client?: string
+          created_at?: string
+          date?: string
+          id?: string
+          reference?: string
+          signature?: string | null
+          total_palette?: number
+          total_poids?: number
+        }
+        Relationships: []
+      }
+      mouvements: {
+        Row: {
+          composant_id: string
+          created_at: string
+          id: string
+          production_order_id: string | null
+          quantity: number
+          reason: string | null
+          type: Database["public"]["Enums"]["mouvement_type"]
+        }
+        Insert: {
+          composant_id: string
+          created_at?: string
+          id?: string
+          production_order_id?: string | null
+          quantity: number
+          reason?: string | null
+          type: Database["public"]["Enums"]["mouvement_type"]
+        }
+        Update: {
+          composant_id?: string
+          created_at?: string
+          id?: string
+          production_order_id?: string | null
+          quantity?: number
+          reason?: string | null
+          type?: Database["public"]["Enums"]["mouvement_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mouvements_composant_id_fkey"
+            columns: ["composant_id"]
+            isOneToOne: false
+            referencedRelation: "composants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nomenclatures: {
+        Row: {
+          coffret_id: string
+          composant_id: string
+          created_at: string
+          id: string
+          quantity: number
+        }
+        Insert: {
+          coffret_id: string
+          composant_id: string
+          created_at?: string
+          id?: string
+          quantity: number
+        }
+        Update: {
+          coffret_id?: string
+          composant_id?: string
+          created_at?: string
+          id?: string
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nomenclatures_coffret_id_fkey"
+            columns: ["coffret_id"]
+            isOneToOne: false
+            referencedRelation: "coffrets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nomenclatures_composant_id_fkey"
+            columns: ["composant_id"]
+            isOneToOne: false
+            referencedRelation: "composants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      production_orders: {
+        Row: {
+          coffret_id: string
+          created_at: string
+          done_at: string | null
+          id: string
+          notes: string | null
+          quantity: number
+          reference: string
+          status: Database["public"]["Enums"]["production_status"]
+          updated_at: string
+        }
+        Insert: {
+          coffret_id: string
+          created_at?: string
+          done_at?: string | null
+          id?: string
+          notes?: string | null
+          quantity: number
+          reference?: string
+          status?: Database["public"]["Enums"]["production_status"]
+          updated_at?: string
+        }
+        Update: {
+          coffret_id?: string
+          created_at?: string
+          done_at?: string | null
+          id?: string
+          notes?: string | null
+          quantity?: number
+          reference?: string
+          status?: Database["public"]["Enums"]["production_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_orders_coffret_id_fkey"
+            columns: ["coffret_id"]
+            isOneToOne: false
+            referencedRelation: "coffrets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      simulate_production: {
+        Args: { p_coffret_id: string; p_quantity: number }
+        Returns: Json
+      }
+      validate_production_order: { Args: { p_order_id: string }; Returns: Json }
     }
     Enums: {
-      [_ in never]: never
+      mouvement_type: "IN" | "OUT"
+      production_status: "draft" | "in_progress" | "done" | "priority"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +419,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      mouvement_type: ["IN", "OUT"],
+      production_status: ["draft", "in_progress", "done", "priority"],
+    },
   },
 } as const
