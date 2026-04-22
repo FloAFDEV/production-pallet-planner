@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AlertCircle, CheckCircle2, Flame, PlayCircle, Sparkles } from "lucide-react";
 import { fmtInt, fmtKg, fmtPalette } from "@/lib/format";
 import { StatusBadge } from "./index";
+import { productionStatusMeta, type ProductionStatus } from "@/lib/domain";
 
 export const Route = createFileRoute("/production")({
   head: () => ({
@@ -34,17 +35,19 @@ type SimResult = {
 };
 
 function ProductionPage() {
+  const sb = supabase as any;
   const qc = useQueryClient();
   const [coffretId, setCoffretId] = useState<string>("");
   const [qty, setQty] = useState<string>("100");
   const [notes, setNotes] = useState<string>("");
-  const [priority, setPriority] = useState(false);
+  const [newStatus, setNewStatus] = useState<ProductionStatus>("draft");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sim, setSim] = useState<SimResult | null>(null);
 
   const coffrets = useQuery({
     queryKey: ["coffrets"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("coffrets").select("*").order("reference");
+      const { data, error } = await sb.from("coffrets").select("*").order("reference");
       if (error) throw error;
       return data;
     },
@@ -53,7 +56,7 @@ function ProductionPage() {
   const orders = useQuery({
     queryKey: ["production_orders", "all"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await sb
         .from("production_orders")
         .select("*, coffret:coffrets(reference,name,poids_coffret,nb_par_palette)")
         .order("status", { ascending: false })
@@ -67,7 +70,7 @@ function ProductionPage() {
     mutationFn: async () => {
       const quantity = parseInt(qty, 10);
       if (!coffretId || !quantity) throw new Error("Coffret et quantité requis");
-      const { data, error } = await supabase.rpc("simulate_production", {
+      const { data, error } = await sb.rpc("simulate_production", {
         p_coffret_id: coffretId,
         p_quantity: quantity,
       });
@@ -86,10 +89,10 @@ function ProductionPage() {
     mutationFn: async () => {
       const quantity = parseInt(qty, 10);
       if (!coffretId || !quantity) throw new Error("Coffret et quantité requis");
-      const { error } = await supabase.from("production_orders").insert({
+      const { error } = await sb.from("production_orders").insert({
         coffret_id: coffretId,
         quantity,
-        status: priority ? "priority" : "in_progress",
+        status: newStatus,
         notes: notes || null,
       });
       if (error) throw error;
@@ -97,14 +100,31 @@ function ProductionPage() {
     onSuccess: () => {
       toast.success("Ordre de fabrication créé");
       qc.invalidateQueries({ queryKey: ["production_orders"] });
-      setSim(null); setNotes(""); setPriority(false);
+      setSim(null); setNotes(""); setNewStatus("draft");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const setOrderStatus = useMutation({
+    mutationFn: async ({ orderId, status }: { orderId: string; status: ProductionStatus }) => {
+      const payload: Record<string, unknown> = { status };
+      if (status === "in_progress") payload.started_at = new Date().toISOString();
+      if (status === "done") payload.finished_at = new Date().toISOString();
+
+      const { error } = await sb.from("production_orders").update(payload).eq("id", orderId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Statut de l'ordre mis a jour");
+      qc.invalidateQueries({ queryKey: ["production_orders"] });
+      qc.invalidateQueries({ queryKey: ["composants"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const validateOrder = useMutation({
     mutationFn: async (orderId: string) => {
-      const { data, error } = await supabase.rpc("validate_production_order", { p_order_id: orderId });
+      const { data, error } = await sb.rpc("validate_production_order", { p_order_id: orderId });
       if (error) throw error;
       const res = data as { success: boolean; error?: string };
       if (!res.success) throw new Error(res.error || "Validation impossible");
@@ -150,10 +170,17 @@ function ProductionPage() {
               <Label>Notes (optionnel)</Label>
               <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Commande client, échéance…" />
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={priority} onChange={(e) => setPriority(e.target.checked)} className="accent-accent" />
-              Marquer comme prioritaire
-            </label>
+            <div className="space-y-2">
+              <Label>Statut initial de l'OF</Label>
+              <Select value={newStatus} onValueChange={(v) => setNewStatus(v as ProductionStatus)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Brouillon</SelectItem>
+                  <SelectItem value="in_progress">En cours</SelectItem>
+                  <SelectItem value="priority">Prioritaire</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex gap-2 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => simulate.mutate()} disabled={simulate.isPending || !coffretId}>
                 <Sparkles className="h-4 w-4" /> Simuler
@@ -172,6 +199,28 @@ function ProductionPage() {
           {sim && <SimulationResult sim={sim} />}
 
           <Card>
+            <CardContent className="py-3">
+              <div className="flex flex-wrap gap-2 text-xs">
+                {[
+                  { key: "all", label: "Tous" },
+                  { key: "draft", label: "Brouillons" },
+                  { key: "in_progress", label: "En cours" },
+                  { key: "priority", label: "Prioritaires" },
+                  { key: "done", label: "Termines" },
+                ].map((f) => (
+                  <button
+                    key={f.key}
+                    onClick={() => setStatusFilter(f.key)}
+                    className={"rounded-md border px-2.5 py-1 transition-colors " + (statusFilter === f.key ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted border-border")}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardHeader><CardTitle className="text-base">Ordres de fabrication</CardTitle></CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -186,7 +235,9 @@ function ProductionPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(orders.data ?? []).map((o) => (
+                    {(orders.data ?? [])
+                      .filter((o: any) => statusFilter === "all" || o.status === statusFilter)
+                      .map((o: any) => (
                       <tr key={o.id} className="border-t border-border">
                         <td className="p-3 font-mono text-xs">{o.reference}</td>
                         <td className="p-3">
@@ -196,13 +247,26 @@ function ProductionPage() {
                         <td className="p-3 text-right tabular font-semibold">{fmtInt(o.quantity)}</td>
                         <td className="p-3 text-center"><StatusBadge status={o.status} /></td>
                         <td className="p-3 text-right">
-                          {o.status !== "done" ? (
-                            <Button size="sm" variant="outline" onClick={() => validateOrder.mutate(o.id)} disabled={validateOrder.isPending}>
-                              <PlayCircle className="h-3.5 w-3.5" /> Valider
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-success inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Terminé</span>
-                          )}
+                          <div className="inline-flex gap-1.5">
+                            {o.status === "draft" && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "in_progress" })} disabled={setOrderStatus.isPending}>
+                                <PlayCircle className="h-3.5 w-3.5" /> Lancer
+                              </Button>
+                            )}
+                            {(o.status === "draft" || o.status === "in_progress") && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "priority" })} disabled={setOrderStatus.isPending}>
+                                Prioriser
+                              </Button>
+                            )}
+                            {(o.status === "in_progress" || o.status === "priority") && (
+                              <Button size="sm" variant="outline" onClick={() => validateOrder.mutate(o.id)} disabled={validateOrder.isPending}>
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Valider
+                              </Button>
+                            )}
+                            {o.status === "done" && (
+                              <span className="text-xs text-success inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Termine</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}

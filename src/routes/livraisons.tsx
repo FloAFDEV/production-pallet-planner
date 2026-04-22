@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Printer, Trash2, Truck } from "lucide-react";
 import { fmtDate, fmtInt, fmtKg, fmtPalette } from "@/lib/format";
+import { formatClientAddress, livraisonStatusMeta, type LivraisonStatus } from "@/lib/domain";
 
 export const Route = createFileRoute("/livraisons")({
   head: () => ({
@@ -24,12 +25,14 @@ export const Route = createFileRoute("/livraisons")({
 });
 
 function LivraisonsPage() {
+  const sb = supabase as any;
+
   const livraisons = useQuery({
     queryKey: ["livraisons"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await sb
         .from("livraisons")
-        .select("*, items:livraison_items(*, coffret:coffrets(reference,name))")
+        .select("*, client_entity:clients(id,name,address,city,postal_code,country), items:livraison_items(*, coffret:coffrets(reference,name))")
         .order("date", { ascending: false });
       if (error) throw error;
       return data;
@@ -50,16 +53,23 @@ function LivraisonsPage() {
         {(livraisons.data ?? []).length === 0 && (
           <Card><CardContent className="py-12 text-center text-muted-foreground text-sm">Aucun bon de livraison pour le moment.</CardContent></Card>
         )}
-        {(livraisons.data ?? []).map((l) => (
+        {(livraisons.data ?? []).map((l: any) => (
           <Card key={l.id}>
             <CardHeader className="flex-row items-start justify-between gap-3">
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Truck className="h-4 w-4 text-info" /> {l.client}
+                  <Truck className="h-4 w-4 text-info" /> {l.client_entity?.name ?? l.client ?? "Client"}
                 </CardTitle>
                 <div className="text-xs text-muted-foreground mt-1">
                   <span className="font-mono">{l.reference}</span> · {fmtDate(l.date)} · {l.adresse}
                 </div>
+                {l.status && (
+                  <div className="mt-1">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${livraisonStatusMeta[l.status]?.cls ?? "bg-muted text-muted-foreground"}`}>
+                      {livraisonStatusMeta[l.status]?.label ?? l.status}
+                    </span>
+                  </div>
+                )}
               </div>
               <Link
                 to="/livraisons/$id"
@@ -112,17 +122,28 @@ function LivraisonsPage() {
 type LineDraft = { coffret_id: string; quantity: number };
 
 function NewLivraisonDialog() {
+  const sb = supabase as any;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [client, setClient] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [status, setStatus] = useState<LivraisonStatus>("draft");
   const [adresse, setAdresse] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [lines, setLines] = useState<LineDraft[]>([{ coffret_id: "", quantity: 1 }]);
 
+  const clients = useQuery({
+    queryKey: ["clients"],
+    queryFn: async () => {
+      const { data, error } = await sb.from("clients").select("*").order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const coffrets = useQuery({
     queryKey: ["coffrets"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("coffrets").select("*").order("reference");
+      const { data, error } = await sb.from("coffrets").select("*").order("reference");
       if (error) throw error;
       return data;
     },
@@ -148,17 +169,27 @@ function NewLivraisonDialog() {
 
   const create = useMutation({
     mutationFn: async () => {
-      if (!client.trim() || !adresse.trim()) throw new Error("Client et adresse requis");
+      const selectedClient = (clients.data ?? []).find((c: any) => c.id === clientId);
+      if (!clientId || !selectedClient) throw new Error("Client requis");
+      if (!adresse.trim()) throw new Error("Adresse requise");
       if (totals.items.length === 0) throw new Error("Ajoutez au moins une ligne");
 
-      const { data: liv, error: e1 } = await supabase
+      const { data: liv, error: e1 } = await sb
         .from("livraisons")
-        .insert({ client, adresse, date, total_palette: totals.palettes, total_poids: totals.poids })
+        .insert({
+          client_id: clientId,
+          client: selectedClient.name,
+          adresse,
+          date,
+          status,
+          total_palette: totals.palettes,
+          total_poids: totals.poids,
+        })
         .select("id")
         .single();
       if (e1) throw e1;
 
-      const { error: e2 } = await supabase.from("livraison_items").insert(
+      const { error: e2 } = await sb.from("livraison_items").insert(
         totals.items.map((it) => ({
           livraison_id: liv!.id,
           coffret_id: it.coffret_id,
@@ -173,7 +204,10 @@ function NewLivraisonDialog() {
       toast.success("Bon de livraison créé");
       qc.invalidateQueries({ queryKey: ["livraisons"] });
       setOpen(false);
-      setClient(""); setAdresse(""); setLines([{ coffret_id: "", quantity: 1 }]);
+      setClientId("");
+      setAdresse("");
+      setStatus("draft");
+      setLines([{ coffret_id: "", quantity: 1 }]);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -189,12 +223,38 @@ function NewLivraisonDialog() {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Client</Label>
-              <Input value={client} onChange={(e) => setClient(e.target.value)} placeholder="Nom du client" />
+              <Select
+                value={clientId}
+                onValueChange={(v) => {
+                  setClientId(v);
+                  const c = (clients.data ?? []).find((x: any) => x.id === v);
+                  if (c) setAdresse(formatClientAddress(c));
+                }}
+              >
+                <SelectTrigger><SelectValue placeholder="Selectionner un client" /></SelectTrigger>
+                <SelectContent>
+                  {(clients.data ?? []).map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Date</Label>
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Statut livraison</Label>
+            <Select value={status} onValueChange={(v) => setStatus(v as LivraisonStatus)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="draft">Brouillon</SelectItem>
+                <SelectItem value="prepared">Preparee</SelectItem>
+                <SelectItem value="loaded">Chargee</SelectItem>
+                <SelectItem value="delivered">Livree</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label>Adresse de livraison</Label>

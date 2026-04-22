@@ -24,10 +24,12 @@ export const Route = createFileRoute("/stock")({
 });
 
 function StockPage() {
+  const sb = supabase as any;
+
   const composants = useQuery({
     queryKey: ["composants"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("composants").select("*").order("reference");
+      const { data, error } = await sb.from("composants").select("*").order("reference");
       if (error) throw error;
       return data;
     },
@@ -36,7 +38,7 @@ function StockPage() {
   const mouvements = useQuery({
     queryKey: ["mouvements"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await sb
         .from("mouvements")
         .select("*, composant:composants(reference,name)")
         .order("created_at", { ascending: false })
@@ -71,24 +73,35 @@ function StockPage() {
                     <tr>
                       <th className="text-left p-3">Référence</th>
                       <th className="text-left p-3">Désignation</th>
-                      <th className="text-right p-3">Stock</th>
+                      <th className="text-right p-3">Stock brut</th>
+                      <th className="text-right p-3">Réservé</th>
+                      <th className="text-right p-3">Disponible</th>
                       <th className="text-right p-3">Seuil min.</th>
+                      <th className="text-left p-3">Emplacement</th>
                       <th className="text-right p-3">Poids u.</th>
                       <th className="text-center p-3">État</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(composants.data ?? []).map((c) => {
-                      const alerte = c.stock <= c.min_stock;
+                    {(composants.data ?? []).map((c: any) => {
+                      const reserve = Number(c.reserved_stock ?? 0);
+                      const stock = Number(c.stock ?? 0);
+                      const disponible = stock - reserve;
+                      const alerte = (c.is_active ?? true) && disponible <= Number(c.min_stock ?? 0);
                       return (
                         <tr key={c.id} className="border-t border-border">
                           <td className="p-3 font-mono text-xs">{c.reference}</td>
                           <td className="p-3 font-medium">{c.name}</td>
-                          <td className={"p-3 text-right tabular font-semibold " + (alerte ? "text-destructive" : "")}>{fmtInt(c.stock)}</td>
+                          <td className="p-3 text-right tabular">{fmtInt(stock)}</td>
+                          <td className="p-3 text-right tabular text-info">{fmtInt(reserve)}</td>
+                          <td className={"p-3 text-right tabular font-semibold " + (alerte ? "text-destructive" : "")}>{fmtInt(disponible)}</td>
                           <td className="p-3 text-right tabular text-muted-foreground">{fmtInt(c.min_stock)}</td>
+                          <td className="p-3 text-xs text-muted-foreground">{c.location ?? "—"}</td>
                           <td className="p-3 text-right tabular text-muted-foreground">{fmtKg(c.poids_unitaire)}</td>
                           <td className="p-3 text-center">
-                            {alerte ? (
+                            {(c.is_active ?? true) === false ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-muted text-muted-foreground border border-border">Inactif</span>
+                            ) : alerte ? (
                               <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-destructive/15 text-destructive border border-destructive/30">Bas</span>
                             ) : (
                               <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-success/15 text-success border border-success/30">OK</span>
@@ -163,9 +176,10 @@ function MouvementDialog({ composants }: { composants: { id: string; reference: 
 
   const mut = useMutation({
     mutationFn: async () => {
+      const sb = supabase as any;
       const quantity = parseInt(qty, 10);
       if (!composantId || !quantity || quantity <= 0) throw new Error("Composant et quantité requis");
-      const { error } = await supabase.from("mouvements").insert({
+      const { error } = await sb.from("mouvements").insert({
         composant_id: composantId,
         type,
         quantity,

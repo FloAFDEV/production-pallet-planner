@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft, Printer } from "lucide-react";
 import { fmtDate, fmtInt, fmtKg, fmtPalette } from "@/lib/format";
+import { livraisonStatusMeta } from "@/lib/domain";
 
 export const Route = createFileRoute("/livraisons/$id")({
   head: () => ({
@@ -15,14 +16,15 @@ export const Route = createFileRoute("/livraisons/$id")({
 });
 
 function LivraisonDetail() {
+  const sb = supabase as any;
   const { id } = Route.useParams();
 
   const { data, isLoading } = useQuery({
     queryKey: ["livraison", id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await sb
         .from("livraisons")
-        .select("*, items:livraison_items(*, coffret:coffrets(reference,name,poids_coffret,nb_par_palette))")
+        .select("*, client_entity:clients(id,name,address,city,postal_code,country), items:livraison_items(*, coffret:coffrets(reference,name,poids_coffret,nb_par_palette))")
         .eq("id", id)
         .single();
       if (error) throw error;
@@ -64,8 +66,15 @@ function LivraisonDetail() {
           <div className="grid grid-cols-2 gap-6 mb-6 text-sm">
             <div>
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Livré à</div>
-              <div className="font-semibold">{data.client}</div>
+              <div className="font-semibold">{data.client_entity?.name ?? data.client ?? "Client"}</div>
               <div className="text-muted-foreground whitespace-pre-line">{data.adresse}</div>
+              {data.status && (
+                <div className="mt-2">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${livraisonStatusMeta[data.status]?.cls ?? "bg-muted text-muted-foreground"}`}>
+                    {livraisonStatusMeta[data.status]?.label ?? data.status}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="text-right">
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Date de livraison</div>
