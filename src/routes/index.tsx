@@ -8,7 +8,13 @@ import { fmtInt } from "@/lib/format";
 
 
 export const Route = createFileRoute("/")({
-  component: () => <div>HOME OK</div>,
+  head: () => ({
+    meta: [
+      { title: "Dashboard — Coffret ERP" },
+      { name: "description", content: "Vue d'ensemble du stock, des alertes et de la production en cours." },
+    ],
+  }),
+  component: Dashboard,
 });
 
 function Dashboard() {
