@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { LayoutDashboard, Factory, Boxes, Truck, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -9,13 +9,14 @@ const NAV = [
   { to: "/livraisons", label: "Livraisons", icon: Truck },
 ] as const;
 
-export function AppLayout({ children }: { children: React.ReactNode }) {
+export function AppLayout() {
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
 
   return (
     <div className="min-h-screen flex bg-background">
+
       {/* SIDEBAR */}
       <aside className="hidden md:flex w-60 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         <div className="px-5 py-5 border-b border-sidebar-border flex items-center gap-2">
@@ -53,13 +54,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-
-        <div className="p-4 text-[11px] opacity-50">
-          v1.0 · ERP coffrets
-        </div>
       </aside>
 
-      {/* MOBILE HEADER */}
+      {/* MOBILE */}
       <div className="md:hidden fixed top-0 inset-x-0 z-30 bg-sidebar border-b">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
@@ -68,7 +65,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        <div className="flex overflow-x-auto border-t">
+        <div className="flex border-t overflow-x-auto">
           {NAV.map(({ to, label, icon: Icon }) => {
             const active =
               to === "/" ? pathname === "/" : pathname.startsWith(to);
@@ -92,8 +89,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* CONTENT */}
       <main className="flex-1 pt-[88px] md:pt-0">
-        {children}
+        <Outlet />
       </main>
+
     </div>
   );
 }

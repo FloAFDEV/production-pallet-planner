@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
 
+import { AppLayout } from "@/components/AppLayout";
 import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 
@@ -46,6 +47,7 @@ function RootShell() {
 function RootComponent() {
   return (
     <>
+      <AppLayout />
       <Toaster richColors position="top-right" />
     </>
   );
