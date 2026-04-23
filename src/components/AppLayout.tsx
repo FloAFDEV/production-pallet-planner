@@ -16,7 +16,7 @@ export function AppLayout() {
     <div className="min-h-screen flex bg-background">
       <aside className="hidden md:flex w-56 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         <div className="px-4 py-4 border-b border-sidebar-border flex items-center gap-2">
-          <img src={agecetLogo} alt="ESAT AGECET" className="h-7 w-7 rounded-sm object-cover border border-sidebar-border" />
+          <img src={agecetLogo} alt="ESAT AGECET" className="h-9 w-9 rounded-sm object-cover border border-sidebar-border" />
 
           <div>
             <div className="font-semibold leading-tight text-sm">

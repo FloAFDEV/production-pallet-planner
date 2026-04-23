@@ -12,27 +12,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { AlertCircle, CheckCircle2, Flame, PlayCircle, Sparkles } from "lucide-react";
 import { fmtInt, fmtKg, fmtPalette } from "@/lib/format";
 import { StatusBadge } from "./index";
+import { ProductionFeasibilityDisplay } from "@/components/ProductionFeasibilityDisplay";
+import { useProductionFeasibility } from "@/hooks/useProductionFeasibility";
 import type { ProductionStatus } from "@/lib/domain";
 
 export const Route = createFileRoute("/production")({
   head: () => ({
     meta: [
       { title: "Production — Coffret ERP" },
-      { name: "description", content: "Simulation de production, ordres de fabrication et validation des OF." },
+      { name: "description", content: "Création d'ordres de fabrication avec vérification automatique du stock." },
     ],
   }),
   component: ProductionPage,
 });
-
-type SimResult = {
-  fabricable: boolean;
-  coffret: { id: string; reference: string; name: string };
-  quantity: number;
-  composants_manquants: Array<{ reference: string; name: string; needed: number; available: number; manquant: number }>;
-  stock_restant: Array<{ reference: string; name: string; stock_actuel: number; reserve: number; apres_production: number }>;
-  palettes: number;
-  poids_total: number;
-};
 
 function ProductionPage() {
   const sb = supabase as any;
@@ -42,7 +34,13 @@ function ProductionPage() {
   const [notes, setNotes] = useState<string>("");
   const [newStatus, setNewStatus] = useState<ProductionStatus>("draft");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [sim, setSim] = useState<SimResult | null>(null);
+
+  // Hook pour vérifier la faisabilité
+  const quantity = parseInt(qty, 10) || 0;
+  const { feasibility, isLoading: feasibilityLoading } = useProductionFeasibility(
+    coffretId || undefined,
+    quantity
+  );
 
   const coffrets = useQuery({
     queryKey: ["coffrets"],
@@ -66,29 +64,13 @@ function ProductionPage() {
     },
   });
 
-  const simulate = useMutation({
-    mutationFn: async () => {
-      const quantity = parseInt(qty, 10);
-      if (!coffretId || !quantity) throw new Error("Coffret et quantité requis");
-      const { data, error } = await sb.rpc("simulate_production", {
-        p_coffret_id: coffretId,
-        p_quantity: quantity,
-      });
-      if (error) throw error;
-      return data as unknown as SimResult;
-    },
-    onSuccess: (data) => {
-      setSim(data);
-      if (data.fabricable) toast.success("Production possible");
-      else toast.error(`Production impossible : ${data.composants_manquants.length} composant(s) manquant(s)`);
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   const createOrder = useMutation({
     mutationFn: async () => {
       const quantity = parseInt(qty, 10);
       if (!coffretId || !quantity) throw new Error("Coffret et quantité requis");
+      if (!feasibility || feasibility.blockers.length > 0) {
+        throw new Error("Production impossible - vérifiez les composants manquants");
+      }
       const { error } = await sb.from("production_orders").insert({
         coffret_id: coffretId,
         quantity,
@@ -100,7 +82,10 @@ function ProductionPage() {
     onSuccess: () => {
       toast.success("Ordre de fabrication créé");
       qc.invalidateQueries({ queryKey: ["production_orders"] });
-      setSim(null); setNotes(""); setNewStatus("draft");
+      setCoffretId("");
+      setQty("100");
+      setNotes("");
+      setNewStatus("draft");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -153,7 +138,12 @@ function ProductionPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Coffret</Label>
-              <Select value={coffretId} onValueChange={(v) => { setCoffretId(v); setSim(null); }}>
+              <Select 
+                value={coffretId} 
+                onValueChange={(v) => { 
+                  setCoffretId(v);
+                }}
+              >
                 <SelectTrigger><SelectValue placeholder="Sélectionner un modèle…" /></SelectTrigger>
                 <SelectContent>
                   {(coffrets.data ?? []).map((c) => (
@@ -166,7 +156,14 @@ function ProductionPage() {
             </div>
             <div className="space-y-2">
               <Label>Quantité à produire</Label>
-              <Input type="number" min="1" value={qty} onChange={(e) => { setQty(e.target.value); setSim(null); }} />
+              <Input 
+                type="number" 
+                min="1" 
+                value={qty} 
+                onChange={(e) => { 
+                  setQty(e.target.value);
+                }} 
+              />
             </div>
             <div className="space-y-2">
               <Label>Notes (optionnel)</Label>
@@ -180,26 +177,40 @@ function ProductionPage() {
                   <SelectItem value="draft">Brouillon</SelectItem>
                   <SelectItem value="in_progress">En cours</SelectItem>
                   <SelectItem value="priority">Prioritaire</SelectItem>
-                    <SelectItem value="paused">En pause</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => simulate.mutate()} disabled={simulate.isPending || !coffretId}>
-                <Sparkles className="h-4 w-4" /> Simuler
-              </Button>
-              <Button className="flex-1" onClick={() => createOrder.mutate()} disabled={createOrder.isPending || !coffretId || !sim?.fabricable}>
-                Créer l'OF
-              </Button>
-            </div>
-            {!sim?.fabricable && sim && (
-              <p className="text-xs text-muted-foreground">La création est bloquée tant que la simulation n'est pas valide.</p>
+            <Button 
+              className="w-full" 
+              onClick={() => createOrder.mutate()} 
+              disabled={
+                createOrder.isPending || 
+                !coffretId || 
+                quantity <= 0 ||
+                !feasibility || 
+                feasibility.blockers.length > 0
+              }
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              {!feasibility || feasibility.blockers.length === 0 
+                ? "Créer l'OF" 
+                : "Bloqué - Composants manquants"}
+            </Button>
+            {feasibility && feasibility.blockers.length > 0 && (
+              <p className="text-xs text-red-600 font-medium">
+                ✗ {feasibility.blockers.length} composant{feasibility.blockers.length > 1 ? "s" : ""} insuffisant{feasibility.blockers.length > 1 ? "s" : ""}
+              </p>
             )}
           </CardContent>
         </Card>
 
         <div className="lg:col-span-3 space-y-4">
-          {sim && <SimulationResult sim={sim} />}
+          {coffretId && quantity > 0 && (
+            <ProductionFeasibilityDisplay 
+              feasibility={feasibility!} 
+              isLoading={feasibilityLoading}
+            />
+          )}
 
           <Card>
             <CardContent className="py-3">
@@ -300,80 +311,6 @@ function ProductionPage() {
           </Card>
         </div>
       </div>
-    </div>
-  );
-}
-
-function SimulationResult({ sim }: { sim: SimResult }) {
-  return (
-    <Card className={sim.fabricable ? "border-success/40" : "border-destructive/40"}>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            {sim.fabricable ? (
-              <><CheckCircle2 className="h-4 w-4 text-success" /> Production possible</>
-            ) : (
-              <><AlertCircle className="h-4 w-4 text-destructive" /> Production impossible</>
-            )}
-          </span>
-          <span className="text-sm font-normal text-muted-foreground">{sim.coffret.name} × {fmtInt(sim.quantity)}</span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Stat label="Palettes nécessaires" value={fmtPalette(sim.palettes)} />
-          <Stat label="Poids total produit" value={fmtKg(sim.poids_total)} />
-        </div>
-
-        {sim.composants_manquants.length > 0 && (
-          <div>
-            <div className="text-xs uppercase tracking-wider text-destructive font-semibold mb-2 flex items-center gap-1">
-              <Flame className="h-3.5 w-3.5" /> Composants manquants
-            </div>
-            <div className="rounded-md border border-destructive/30 bg-destructive/5 divide-y divide-destructive/15">
-              {sim.composants_manquants.map((c) => (
-                <div key={c.reference} className="p-2.5 flex items-center justify-between text-sm">
-                  <div>
-                    <div className="font-medium">{c.name}</div>
-                    <div className="text-xs text-muted-foreground font-mono">{c.reference}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-mono font-semibold text-destructive">−{fmtInt(c.manquant)}</div>
-                    <div className="text-[11px] text-muted-foreground">besoin {fmtInt(c.needed)} / dispo {fmtInt(c.available)}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <details className="text-sm">
-          <summary className="cursor-pointer text-xs uppercase tracking-wider text-muted-foreground font-semibold">Détail stock après production</summary>
-          <div className="mt-2 rounded-md border border-border divide-y divide-border">
-            {sim.stock_restant.map((c) => (
-              <div key={c.reference} className="p-2 flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium">{c.name}</div>
-                  <div className="text-xs text-muted-foreground font-mono">{c.reference}</div>
-                </div>
-                <div className="text-right text-xs tabular">
-                  <span className="text-muted-foreground">{fmtInt(c.stock_actuel)} − rés. {fmtInt(c.reserve)} →</span>{" "}
-                  <span className={c.apres_production < 0 ? "text-destructive font-semibold" : "font-semibold"}>{fmtInt(c.apres_production)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </details>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border p-3">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="mt-1 text-xl font-display font-semibold tabular">{value}</div>
     </div>
   );
 }
