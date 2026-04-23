@@ -49,22 +49,31 @@ function Dashboard() {
     queryFn: async () => {
       const { data, error } = await sb.from("composants").select("id,reference,name,min_stock,is_active").order("reference");
       console.log("[dashboard] composants", { data, error });
-      if (error) throw error;
+      if (error) {
+        console.error("[dashboard] composants error", error);
+        throw error;
+      }
       return data;
     },
   });
 
   const componentIds = useMemo(() => ((composants.data ?? []) as any[]).map((c) => c.id), [composants.data]);
+  console.log("componentIds", componentIds);
 
   const stockAgg = useQuery({
     queryKey: ["stock_snapshot", "dashboard", componentIds],
     enabled: componentIds.length > 0,
     refetchInterval: 10000,
     queryFn: async () => {
+      if (!componentIds.length) return [];
       const { data, error } = await sb.rpc("get_stock_snapshot_by_components", {
         component_ids: componentIds,
       });
-      if (error) throw error;
+      console.log("stock snapshot", data);
+      if (error) {
+        console.log("[dashboard] stock snapshot fallback", error.message);
+        return [];
+      }
       return data ?? [];
     },
   });
@@ -79,7 +88,11 @@ function Dashboard() {
         .order("status", { ascending: false })
         .order("created_at", { ascending: false });
       console.log("[dashboard] production_orders(active)", { data: ordersData, error });
-      if (error) throw error;
+      console.log("orders", ordersData);
+      if (error) {
+        console.error("[dashboard] production_orders error", error);
+        throw error;
+      }
 
       const activeOrders = ((ordersData ?? []) as any[]).filter((o) => ["draft", "ready", "in_progress", "paused"].includes(String(o.status)));
 
@@ -90,7 +103,10 @@ function Dashboard() {
           .from("coffrets")
           .select("id,reference,name")
           .in("id", coffretIds);
-        if (coffretsError) throw coffretsError;
+        if (coffretsError) {
+          console.error("[dashboard] coffrets by ids error", coffretsError);
+          throw coffretsError;
+        }
         coffretMap = new Map((coffretsData ?? []).map((c: any) => [c.id, c]));
       }
 
@@ -110,7 +126,10 @@ function Dashboard() {
         .select("id, reference, status, created_at, client_id")
         .order("created_at", { ascending: false });
       console.log("[dashboard] orders(open)", { data: ordersData, error });
-      if (error) throw error;
+      if (error) {
+        console.error("[dashboard] orders error", error);
+        throw error;
+      }
 
       const orderIds = ((ordersData ?? []) as any[]).map((o) => o.id);
       const clientIds = Array.from(new Set(((ordersData ?? []) as any[]).map((o) => o.client_id).filter(Boolean)));
@@ -121,7 +140,10 @@ function Dashboard() {
           .from("clients")
           .select("id,name")
           .in("id", clientIds);
-        if (clientsError) throw clientsError;
+        if (clientsError) {
+          console.error("[dashboard] clients by ids error", clientsError);
+          throw clientsError;
+        }
         clientMap = new Map((clientsData ?? []).map((c: any) => [c.id, c]));
       }
 
@@ -131,7 +153,10 @@ function Dashboard() {
           .from("order_lines")
           .select("id,order_id,quantity,product_variant_id")
           .in("order_id", orderIds);
-        if (linesError) throw linesError;
+        if (linesError) {
+          console.error("[dashboard] order_lines by ids error", linesError);
+          throw linesError;
+        }
         for (const line of (linesData ?? []) as any[]) {
           const current = linesByOrder.get(line.order_id) ?? [];
           current.push(line);
@@ -154,7 +179,10 @@ function Dashboard() {
       const { data, error } = await sb
         .from("coffret_components")
         .select("coffret_id,composant_id,quantity");
-      if (error) throw error;
+      if (error) {
+        console.error("[dashboard] coffret_components error", error);
+        throw error;
+      }
       return (data ?? []) as any[];
     },
   });
@@ -167,7 +195,10 @@ function Dashboard() {
         .from("shipments")
         .select("id,reference,status,client_id,created_at")
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (error) {
+        console.error("[dashboard] shipments error", error);
+        throw error;
+      }
       return (data ?? []) as any[];
     },
   });
