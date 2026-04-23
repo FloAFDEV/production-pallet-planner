@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Boxes, Factory, Flame, TrendingDown } from "lucide-react";
 import { fmtInt } from "@/lib/format";
-import { productionStatusMeta } from "@/lib/domain";
+import { normalizeProductionStatus, productionStatusMeta } from "@/lib/domain";
 import { UI } from "@/lib/uiLabels";
 
 export const Route = createFileRoute("/")({
@@ -330,6 +330,7 @@ function KPI({ icon, label, value, accent }: { icon: React.ReactNode; label: str
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  const m = productionStatusMeta[status] ?? { label: status, cls: "bg-muted text-muted-foreground" };
+  const canonical = normalizeProductionStatus(status);
+  const m = productionStatusMeta[canonical ?? ""] ?? { label: status, cls: "bg-muted text-muted-foreground" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${m.cls}`}>{m.label}</span>;
 }

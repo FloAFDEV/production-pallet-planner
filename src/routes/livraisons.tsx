@@ -12,7 +12,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Printer, Trash2, Truck } from "lucide-react";
 import { fmtDate, fmtInt, fmtKg, fmtPalette } from "@/lib/format";
-import { formatClientAddress, livraisonStatusMeta, type LivraisonStatus } from "@/lib/domain";
+import {
+  formatClientAddress,
+  livraisonStatusMeta,
+  normalizeLivraisonStatus,
+  toDbLivraisonStatus,
+  type LivraisonStatus,
+} from "@/lib/domain";
 import { UI } from "@/lib/uiLabels";
 import agecetLogo from "@/assets/logo_agecet_hands.jpg";
 
@@ -178,8 +184,8 @@ function LivraisonsPage() {
                 </div>
                 {l.status && (
                   <div className="mt-1">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${livraisonStatusMeta[l.status]?.cls ?? "bg-muted text-muted-foreground"}`}>
-                      {livraisonStatusMeta[l.status]?.label ?? l.status}
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${livraisonStatusMeta[normalizeLivraisonStatus(l.status) ?? ""]?.cls ?? "bg-muted text-muted-foreground"}`}>
+                      {livraisonStatusMeta[normalizeLivraisonStatus(l.status) ?? ""]?.label ?? l.status}
                     </span>
                   </div>
                 )}
@@ -291,7 +297,7 @@ function ClientHistoryPanel({
     const ordersByClient = new Map<string, number>();
     for (const o of commercialOrders ?? []) {
       const status = String(o.status ?? "").toLowerCase();
-      if (status === "annule") continue;
+      if (status === "annule" || status === "canceled" || status === "cancelled") continue;
       const key = o.client_id ?? o.client?.id;
       if (!key) continue;
       const current = ordersByClient.get(key) ?? 0;
@@ -455,7 +461,7 @@ function NewLivraisonDialog() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [clientId, setClientId] = useState("");
-  const [status, setStatus] = useState<LivraisonStatus>("brouillon");
+  const [status, setStatus] = useState<LivraisonStatus>("draft");
   const [adresse, setAdresse] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [lines, setLines] = useState<LineDraft[]>([{ coffret_id: "", quantity: 1 }]);
@@ -509,7 +515,7 @@ function NewLivraisonDialog() {
           client: selectedClient.name,
           adresse,
           date,
-          status: status || "brouillon",
+          status: toDbLivraisonStatus(status || "draft"),
           total_palette: totals.palettes,
           total_poids: totals.poids,
         })
@@ -534,7 +540,7 @@ function NewLivraisonDialog() {
       setOpen(false);
       setClientId("");
       setAdresse("");
-      setStatus("brouillon");
+      setStatus("draft");
       setLines([{ coffret_id: "", quantity: 1 }]);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -577,10 +583,10 @@ function NewLivraisonDialog() {
             <Select value={status} onValueChange={(v) => setStatus(v as LivraisonStatus)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="brouillon">Brouillon</SelectItem>
-                <SelectItem value="pret">Pret</SelectItem>
-                <SelectItem value="expedie">Expedie</SelectItem>
-                <SelectItem value="livre">Livre</SelectItem>
+                <SelectItem value="draft">Brouillon</SelectItem>
+                <SelectItem value="ready">Prêt</SelectItem>
+                <SelectItem value="shipped">Expédié</SelectItem>
+                <SelectItem value="delivered">Livré</SelectItem>
               </SelectContent>
             </Select>
           </div>

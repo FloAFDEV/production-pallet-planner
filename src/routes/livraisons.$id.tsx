@@ -5,7 +5,12 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtDate, fmtInt, fmtKg, fmtPalette } from "@/lib/format";
-import { livraisonStatusMeta } from "@/lib/domain";
+import {
+  livraisonStatusMeta,
+  normalizeLivraisonStatus,
+  toDbLivraisonStatus,
+  type LivraisonStatus,
+} from "@/lib/domain";
 import { UI } from "@/lib/uiLabels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,10 +84,10 @@ function LivraisonDetail() {
   });
 
   const updateStatus = useMutation({
-    mutationFn: async (status: string) => {
+    mutationFn: async (status: LivraisonStatus) => {
       const { data: rpcData, error } = await sb.rpc("transition_livraison_status", {
         p_livraison_id: id,
-        p_status: status,
+        p_status: toDbLivraisonStatus(status),
       });
       if (error) throw error;
       if (!rpcData?.success) {
@@ -97,10 +102,10 @@ function LivraisonDetail() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const canSetPret = data?.status === "brouillon";
-  const canSetExpedie = data?.status === "pret";
-  const canSetLivre = data?.status === "expedie";
-  const canSetAnnule = data?.status !== "livre" && data?.status !== "annule";
+  const status = normalizeLivraisonStatus(data?.status);
+  const canSetReady = status === "draft";
+  const canSetShipped = status === "ready";
+  const canSetDelivered = status === "shipped";
 
   const totals = useMemo(() => {
     const items = (data?.items ?? []) as any[];
@@ -141,8 +146,8 @@ function LivraisonDetail() {
             </p>
           </div>
           <div>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${livraisonStatusMeta[data.status]?.cls ?? "bg-muted text-muted-foreground"}`}>
-              {livraisonStatusMeta[data.status]?.label ?? "Données manquantes"}
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${livraisonStatusMeta[status ?? ""]?.cls ?? "bg-muted text-muted-foreground"}`}>
+              {livraisonStatusMeta[status ?? ""]?.label ?? "Données manquantes"}
             </span>
           </div>
         </div>
@@ -198,10 +203,9 @@ function LivraisonDetail() {
       <div className="print:hidden mt-4 rounded-md border border-border p-4">
         <h2 className="text-sm font-semibold mb-3">Statut livraison</h2>
         <div className="flex flex-wrap gap-2 mb-3">
-          <Button variant="outline" disabled={!canSetPret || updateStatus.isPending} onClick={() => updateStatus.mutate("pret")}>Marquer prêt</Button>
-          <Button variant="outline" disabled={!canSetExpedie || updateStatus.isPending} onClick={() => updateStatus.mutate("expedie")}>Marquer expédié</Button>
-          <Button variant="outline" disabled={!canSetLivre || updateStatus.isPending} onClick={() => updateStatus.mutate("livre")}>Marquer livré</Button>
-          <Button variant="destructive" disabled={!canSetAnnule || updateStatus.isPending} onClick={() => updateStatus.mutate("annule")}>Annuler</Button>
+          <Button variant="outline" disabled={!canSetReady || updateStatus.isPending} onClick={() => updateStatus.mutate("ready")}>Marquer prêt</Button>
+          <Button variant="outline" disabled={!canSetShipped || updateStatus.isPending} onClick={() => updateStatus.mutate("shipped")}>Marquer expédié</Button>
+          <Button variant="outline" disabled={!canSetDelivered || updateStatus.isPending} onClick={() => updateStatus.mutate("delivered")}>Marquer livré</Button>
         </div>
         <Input
           value={reason}

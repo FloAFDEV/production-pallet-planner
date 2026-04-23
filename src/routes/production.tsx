@@ -1,504 +1,420 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { AlertCircle, CheckCircle2, Flame, PlayCircle, Sparkles } from "lucide-react";
-import { fmtInt, fmtKg, fmtPalette } from "@/lib/format";
-import { StatusBadge } from "./index";
-import { ProductionFeasibilityDisplay } from "@/components/ProductionFeasibilityDisplay";
-import { useProductionFeasibility } from "@/hooks/useProductionFeasibility";
+import { fmtInt } from "@/lib/format";
+import {
+  normalizeProductionStatus,
+  productionStatusMeta,
+  toDbProductionStatus,
+} from "@/lib/domain";
 import { useCreateProductionOrderSafe } from "@/hooks/useMultiCoffret";
-import { MultiCoffretSimulator } from "@/components/MultiCoffretSimulator";
-import type { ProductionStatus } from "@/lib/domain";
+
+type ProdRow = { id: string; coffret_id: string; quantity: number };
+
+type LineCheck = {
+  rowId: string;
+  ok: boolean;
+  missing: Array<{ reference: string; name: string; manquant: number }>;
+  remaining: Array<{ reference: string; name: string; apres_production: number }>;
+};
 
 export const Route = createFileRoute("/production")({
   head: () => ({
     meta: [
-      { title: "Production — Coffret ERP" },
-      { name: "description", content: "Création d'ordres de fabrication avec vérification automatique du stock." },
+      { title: "Production — Atelier" },
+      { name: "description", content: "Fabrication de coffrets et suivi d'avancement." },
     ],
   }),
   component: ProductionPage,
 });
 
+
 function ProductionPage() {
   const sb = supabase as any;
   const qc = useQueryClient();
-  const [coffretId, setCoffretId] = useState<string>("");
-  const [qty, setQty] = useState<string>("100");
-  const [notes, setNotes] = useState<string>("");
-  const [newStatus, setNewStatus] = useState<ProductionStatus>("brouillon");
-  const [priority, setPriority] = useState<0 | 1>(0);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const createSafe = useCreateProductionOrderSafe();
 
-  // Hook pour vérifier la faisabilité
-  const quantity = parseInt(qty, 10) || 0;
-  const { feasibility, isLoading: feasibilityLoading } = useProductionFeasibility(
-    coffretId || undefined,
-    quantity
-  );
-
-  // Mutation RPC atomique pour créer l'OF avec réservations
-  const createOrderSafe = useCreateProductionOrderSafe();
-
-  const createOrder = useMutation({
-    mutationFn: async () => {
-      const quantity = parseInt(qty, 10);
-      if (!coffretId || !quantity) throw new Error("Coffret et quantité requis");
-      if (!feasibility || feasibility.blockers.length > 0) {
-        throw new Error("Production impossible - vérifiez les composants manquants");
-      }
-      
-      // Utilise la RPC atomique
-      const result = await createOrderSafe.mutateAsync({
-        coffret_id: coffretId,
-        quantity,
-        status: newStatus,
-        priority,
-        notes: notes || undefined,
-      });
-      
-      if (!result.success) {
-        throw new Error(result.error || "Erreur lors de la création");
-      }
-      
-      return result;
-    },
-    onSuccess: (data) => {
-      toast.success(`OF créé: ${data.reference}`);
-      qc.invalidateQueries({ queryKey: ["production_orders"] });
-      qc.invalidateQueries({ queryKey: ["composants"] });
-      setCoffretId("");
-      setQty("100");
-      setNotes("");
-      setNewStatus("brouillon");
-      setPriority(0);
-    },
-    onError: (e: Error) => {
-      console.error("[createOrder] Error:", e);
-      toast.error(e.message);
-    },
-  });
+  const [rows, setRows] = useState<ProdRow[]>([{ id: crypto.randomUUID(), coffret_id: "", quantity: 1 }]);
+  const [urgent, setUrgent] = useState(false);
 
   const coffrets = useQuery({
-    queryKey: ["coffrets"],
+    queryKey: ["coffrets", "production"],
     queryFn: async () => {
-      const { data, error } = await sb.from("coffrets").select("*").order("reference");
+      const { data, error } = await sb.from("coffrets").select("id,reference,name").order("reference");
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
   });
 
-  const orders = useQuery({
-    queryKey: ["production_orders", "all"],
+  const lineChecks = useQuery({
+    queryKey: ["production", "checks", JSON.stringify(rows.map((r) => ({ coffret_id: r.coffret_id, quantity: r.quantity })))],
+    enabled: rows.some((r) => r.coffret_id && r.quantity > 0),
     queryFn: async () => {
-      const { data: ordersData, error } = await sb
+      const checks: LineCheck[] = [];
+
+      for (const row of rows) {
+        if (!row.coffret_id || row.quantity <= 0) {
+          checks.push({ rowId: row.id, ok: false, missing: [], remaining: [] });
+          continue;
+        }
+
+        const { data, error } = await sb.rpc("simulate_production", {
+          p_coffret_id: row.coffret_id,
+          p_quantity: row.quantity,
+        });
+        if (error) throw error;
+
+        checks.push({
+          rowId: row.id,
+          ok: Boolean(data?.fabricable),
+          missing: ((data?.composants_manquants ?? []) as any[]).map((m) => ({
+            reference: String(m.reference ?? ""),
+            name: String(m.name ?? ""),
+            manquant: Number(m.manquant ?? 0),
+          })),
+          remaining: ((data?.stock_restant ?? []) as any[]).map((m) => ({
+            reference: String(m.reference ?? ""),
+            name: String(m.name ?? ""),
+            apres_production: Number(m.apres_production ?? 0),
+          })),
+        });
+      }
+
+      return checks;
+    },
+  });
+
+  const checksByRow = useMemo(() => {
+    const m = new Map<string, LineCheck>();
+    for (const check of lineChecks.data ?? []) m.set(check.rowId, check);
+    return m;
+  }, [lineChecks.data]);
+
+  const validRows = rows.filter((r) => r.coffret_id && r.quantity > 0);
+  const canCreate =
+    validRows.length > 0 &&
+    validRows.every((row) => {
+      const check = checksByRow.get(row.id);
+      return check?.ok;
+    });
+
+  const orders = useQuery({
+    queryKey: ["production_orders", "atelier"],
+    queryFn: async () => {
+      const { data: rawOrders, error } = await sb
         .from("production_orders")
         .select("*")
-        .order("status", { ascending: false })
         .order("created_at", { ascending: false });
       if (error) throw error;
 
-      const coffretIds = Array.from(
-        new Set(((ordersData ?? []) as any[]).map((o) => o.coffret_id).filter(Boolean))
-      );
+      const filtered = ((rawOrders ?? []) as any[]).filter((o) => normalizeProductionStatus(String(o.status)) !== null);
+      const ids = Array.from(new Set(filtered.map((o) => o.coffret_id).filter(Boolean)));
 
       let coffretMap = new Map<string, any>();
-      if (coffretIds.length > 0) {
+      if (ids.length > 0) {
         const { data: coffretsData, error: coffretsError } = await sb
           .from("coffrets")
-          .select("id,reference,name,poids_coffret,nb_par_palette")
-          .in("id", coffretIds);
+          .select("id,reference,name")
+          .in("id", ids);
         if (coffretsError) throw coffretsError;
         coffretMap = new Map((coffretsData ?? []).map((c: any) => [c.id, c]));
       }
 
-      return ((ordersData ?? []) as any[]).map((o) => ({
-        ...o,
-        coffret: coffretMap.get(o.coffret_id) ?? null,
-      }));
+      return filtered.map((o) => ({ ...o, coffret: coffretMap.get(o.coffret_id) ?? null }));
     },
   });
 
-  const setOrderStatus = useMutation({
-    mutationFn: async ({ orderId, status }: { orderId: string; status: ProductionStatus }) => {
-      if (status === "annule") {
-        const { data, error } = await sb.rpc("cancel_production_order_with_unreserve", { p_order_id: orderId });
-        if (error) throw error;
-        const res = data as { success: boolean; error?: string };
-        if (!res.success) throw new Error(res.error || "Annulation impossible");
-        return;
+  const createFabrication = useMutation({
+    mutationFn: async () => {
+      for (const row of validRows) {
+        await createSafe.mutateAsync({
+          coffret_id: row.coffret_id,
+          quantity: row.quantity,
+          status: toDbProductionStatus("draft"),
+          priority: urgent ? 1 : 0,
+        });
       }
-
-      const { data, error } = await sb.rpc("transition_production_order_status", {
-        p_order_id: orderId,
-        p_status: status,
-      });
-      if (error) throw error;
-      const res = data as { success: boolean; error?: string };
-      if (!res.success) throw new Error(res.error || "Transition impossible");
     },
     onSuccess: () => {
-      toast.success("Statut de l'ordre mis a jour");
+      toast.success("Fabrication créée");
+      qc.invalidateQueries({ queryKey: ["production_orders"] });
+      qc.invalidateQueries({ queryKey: ["composants"] });
+      setRows([{ id: crypto.randomUUID(), coffret_id: "", quantity: 1 }]);
+      setUrgent(false);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const transition = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: "in_progress" | "paused" }) => {
+      const { data, error } = await sb.rpc("transition_production_order_status", {
+        p_order_id: id,
+        p_status: toDbProductionStatus(status),
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Transition impossible");
+    },
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["production_orders"] });
       qc.invalidateQueries({ queryKey: ["composants"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const validateOrder = useMutation({
-    mutationFn: async (orderId: string) => {
-      const { data, error } = await sb.rpc("validate_production_order", { p_order_id: orderId });
+  const finish = useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await sb.rpc("validate_production_order", { p_order_id: id });
       if (error) throw error;
-      const res = data as { success: boolean; error?: string };
-      if (!res.success) throw new Error(res.error || "Validation impossible");
+      if (!data?.success) throw new Error(data?.error || "Validation impossible");
     },
     onSuccess: () => {
-      toast.success("Production validée — stock décrémenté");
+      toast.success("Fabrication terminée");
       qc.invalidateQueries({ queryKey: ["production_orders"] });
       qc.invalidateQueries({ queryKey: ["composants"] });
-      qc.invalidateQueries({ queryKey: ["mouvements"] });
+      qc.invalidateQueries({ queryKey: ["stock_movements"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <header className="mb-6">
-        <p className="text-xs uppercase tracking-widest text-muted-foreground">Atelier</p>
-        <h1 className="text-3xl md:text-4xl font-display font-semibold mt-1">Production</h1>
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+      <header>
+        <p className="text-xs uppercase tracking-widest text-muted-foreground">Production</p>
+        <h1 className="text-3xl md:text-4xl font-display font-semibold mt-1">Fabrication de coffrets</h1>
       </header>
 
-      <Tabs defaultValue="single" className="w-full">
-        <TabsList className="mb-6">
-          <TabsTrigger value="single">Simple</TabsTrigger>
-          <TabsTrigger value="multi">Multi-coffrets</TabsTrigger>
-          <TabsTrigger value="orders">Ordres</TabsTrigger>
-        </TabsList>
-
-        {/* TAB: SINGLE COFFRET */}
-        <TabsContent value="single" className="space-y-6">
-          <div className="grid lg:grid-cols-5 gap-6">
-            <Card className="lg:col-span-2">
-          <CardHeader><CardTitle className="text-base flex items-center gap-2"><Sparkles className="h-4 w-4 text-accent" /> Simulation & nouvel OF</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Coffret</Label>
-              <Select 
-                value={coffretId} 
-                onValueChange={(v) => { 
-                  setCoffretId(v);
-                }}
-              >
-                <SelectTrigger><SelectValue placeholder="Sélectionner un modèle…" /></SelectTrigger>
-                <SelectContent>
-                  {(coffrets.data ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      <span className="font-mono text-xs mr-2">{c.reference}</span>{c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Quantité à produire</Label>
-              <Input 
-                type="number" 
-                min="1" 
-                value={qty} 
-                onChange={(e) => { 
-                  setQty(e.target.value);
-                }} 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Notes (optionnel)</Label>
-              <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Commande client, échéance…" />
-            </div>
-            <div className="space-y-2">
-              <Label>Statut initial de l'OF</Label>
-              <Select value={newStatus} onValueChange={(v) => setNewStatus(v as ProductionStatus)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="brouillon">Brouillon</SelectItem>
-                  <SelectItem value="pret">Pret</SelectItem>
-                  <SelectItem value="en_cours">En cours</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2">
-              <div>
-                <div className="text-sm font-medium">Urgent</div>
-                <div className="text-xs text-muted-foreground">Badge de priorite uniquement</div>
-              </div>
-              <Switch checked={priority === 1} onCheckedChange={(checked) => setPriority(checked ? 1 : 0)} />
-            </div>
-            <Button 
-              className="w-full" 
-              onClick={() => createOrder.mutate()} 
-              disabled={
-                createOrder.isPending || 
-                !coffretId || 
-                quantity <= 0 ||
-                !feasibility || 
-                feasibility.blockers.length > 0
-              }
-            >
-              <Sparkles className="h-4 w-4 mr-2" />
-              {!feasibility || feasibility.blockers.length === 0 
-                ? "Créer l'OF" 
-                : "Bloqué - Composants manquants"}
-            </Button>
-            {feasibility && feasibility.blockers.length > 0 && (
-              <p className="text-xs text-red-600 font-medium">
-                ✗ {feasibility.blockers.length} composant{feasibility.blockers.length > 1 ? "s" : ""} insuffisant{feasibility.blockers.length > 1 ? "s" : ""}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="lg:col-span-3 space-y-4">
-          {coffretId && quantity > 0 && (
-            <ProductionFeasibilityDisplay 
-              feasibility={feasibility!} 
-              isLoading={feasibilityLoading}
-            />
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Créer fabrication</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {coffrets.data && coffrets.data.length === 0 && (
+            <p className="text-sm text-muted-foreground">Aucune donnée disponible</p>
           )}
 
-          <Card>
-            <CardContent className="py-3">
-              <div className="flex flex-wrap gap-2 text-xs">
-                {[
-                  { key: "all", label: "Tous" },
-                  { key: "brouillon", label: "Brouillons" },
-                  { key: "pret", label: "Prets" },
-                  { key: "en_cours", label: "En cours" },
-                  { key: "en_pause", label: "En pause" },
-                  { key: "termine", label: "Termines" },
-                  { key: "annule", label: "Annules" },
-                ].map((f) => (
-                  <button
-                    key={f.key}
-                    onClick={() => setStatusFilter(f.key)}
-                    className={"rounded-md border px-2.5 py-1 transition-colors " + (statusFilter === f.key ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted border-border")}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          {rows.map((row, idx) => {
+            const check = checksByRow.get(row.id);
+            const status = check
+              ? check.ok
+                ? check.missing.length > 0
+                  ? "attention"
+                  : "ok"
+                : "ko"
+              : "ko";
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Ordres de fabrication</CardTitle></CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
-                    <tr>
-                      <th className="text-left p-3">Référence</th>
-                      <th className="text-left p-3">Coffret</th>
-                      <th className="text-right p-3">Qté</th>
-                      <th className="text-center p-3">Statut</th>
-                      <th className="text-right p-3">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(orders.data ?? [])
-                      .filter((o: any) => statusFilter === "all" || o.status === statusFilter)
-                      .map((o: any) => (
-                      <tr key={o.id} className="border-t border-border">
-                        <td className="p-3 font-mono text-xs">{o.reference}</td>
-                        <td className="p-3">
-                          <div className="font-medium">{o.coffret?.name}</div>
-                          <div className="text-xs text-muted-foreground font-mono">{o.coffret?.reference}</div>
-                        </td>
-                        <td className="p-3 text-right tabular font-semibold">{fmtInt(o.quantity)}</td>
-                        <td className="p-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <StatusBadge status={o.status} />
-                            {Number(o.priority ?? 0) === 1 && (
-                              <span className="inline-flex items-center rounded-sm border border-destructive/30 bg-destructive/15 px-2 py-0.5 text-[11px] font-medium text-destructive">
-                                Urgent
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-3 text-right">
-                          <div className="inline-flex gap-1.5">
-                            {o.status === "brouillon" && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "pret" })} disabled={setOrderStatus.isPending}>
-                                <PlayCircle className="h-3.5 w-3.5" /> Mettre pret
-                              </Button>
-                            )}
-                            {o.status === "pret" && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "en_cours" })} disabled={setOrderStatus.isPending}>
-                                Démarrer
-                              </Button>
-                            )}
-                            {(o.status === "en_cours") && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "en_pause" })} disabled={setOrderStatus.isPending}>
-                                Pause
-                              </Button>
-                            )}
-                            {o.status === "en_pause" && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "en_cours" })} disabled={setOrderStatus.isPending}>
-                                Reprendre
-                              </Button>
-                            )}
-                            {(o.status === "pret" || o.status === "en_cours" || o.status === "en_pause") && (
-                              <Button size="sm" variant="outline" onClick={() => validateOrder.mutate(o.id)} disabled={validateOrder.isPending}>
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Valider
-                              </Button>
-                            )}
-                            {(o.status === "brouillon" || o.status === "en_pause") && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "annule" })} disabled={setOrderStatus.isPending}>
-                                Annuler
-                              </Button>
-                            )}
-                            {o.status === "termine" && (
-                              <span className="text-xs text-success inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Termine</span>
-                            )}
-                            {o.status === "annule" && (
-                              <span className="text-xs text-muted-foreground inline-flex items-center gap-1">Annule</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            const statusCls =
+              status === "ok"
+                ? "bg-success/15 text-success border border-success/30"
+                : status === "attention"
+                  ? "bg-warning/15 text-warning border border-warning/30"
+                  : "bg-destructive/15 text-destructive border border-destructive/30";
+
+            const statusTxt =
+              status === "ok"
+                ? "Fabrication possible"
+                : status === "attention"
+                  ? "Attention"
+                  : "Fabrication impossible";
+
+            return (
+              <div key={row.id} className="rounded-md border border-border p-3 space-y-3">
+                <div className="grid md:grid-cols-12 gap-3 items-end">
+                  <div className="md:col-span-6">
+                    <label className="text-xs text-muted-foreground">Coffret</label>
+                    <Select
+                      value={row.coffret_id}
+                      onValueChange={(value) =>
+                        setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, coffret_id: value } : r)))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionner" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(coffrets.data ?? []).map((c: any) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            <span className="font-mono text-xs mr-2">{c.reference}</span>{c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="md:col-span-3">
+                    <label className="text-xs text-muted-foreground">Quantité</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={String(row.quantity)}
+                      onChange={(e) =>
+                        setRows((prev) =>
+                          prev.map((r) => (r.id === row.id ? { ...r, quantity: Math.max(0, Number(e.target.value || 0)) } : r))
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div className="md:col-span-3 flex gap-2">
+                    <span className={`inline-flex items-center rounded-sm px-2 py-1 text-[11px] font-medium ${statusCls}`}>
+                      {statusTxt}
+                    </span>
+                    {rows.length > 1 && (
+                      <Button
+                        variant="outline"
+                        onClick={() => setRows((prev) => prev.filter((r) => r.id !== row.id))}
+                      >
+                        Retirer
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {!!check && (
+                  <div className="grid md:grid-cols-2 gap-3 text-xs">
+                    <div className="rounded-md border border-border p-2">
+                      <div className="font-medium mb-1">Pièces manquantes</div>
+                      {check.missing.length === 0 ? (
+                        <div className="text-success">Aucune</div>
+                      ) : (
+                        <ul className="space-y-1">
+                          {check.missing.slice(0, 4).map((m) => (
+                            <li key={`${row.id}-${m.reference}`} className="text-destructive">
+                              {m.reference} · {m.name} : {fmtInt(m.manquant)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="rounded-md border border-border p-2">
+                      <div className="font-medium mb-1">Stock après fabrication</div>
+                      {check.remaining.length === 0 ? (
+                        <div className="text-muted-foreground">Aucune donnée disponible</div>
+                      ) : (
+                        <ul className="space-y-1">
+                          {check.remaining.slice(0, 4).map((m) => (
+                            <li key={`${row.id}-${m.reference}-rest`}>
+                              {m.reference} · {m.name} : {fmtInt(m.apres_production)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {idx === rows.length - 1 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setRows((prev) => [...prev, { id: crypto.randomUUID(), coffret_id: "", quantity: 1 }])}
+                  >
+                    Ajouter ligne
+                  </Button>
+                )}
               </div>
-            </CardContent>
-          </Card>
+            );
+          })}
+
+          <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2">
+            <div>
+              <div className="text-sm font-medium">Priorité</div>
+              <div className="text-xs text-muted-foreground">{urgent ? "Urgent" : "Normal"}</div>
             </div>
+            <Switch checked={urgent} onCheckedChange={setUrgent} />
           </div>
-        </TabsContent>
 
-        {/* TAB: MULTI COFFRETS */}
-        <TabsContent value="multi" className="space-y-6">
-          <MultiCoffretSimulator coffrets={coffrets.data ?? []} />
-        </TabsContent>
+          <Button className="w-full" onClick={() => createFabrication.mutate()} disabled={!canCreate || createFabrication.isPending}>
+            Créer fabrication
+          </Button>
+        </CardContent>
+      </Card>
 
-        {/* TAB: TOUS LES ORDRES */}
-        <TabsContent value="orders" className="space-y-4">
-          <Card>
-            <CardContent className="py-3">
-              <div className="flex flex-wrap gap-2 text-xs">
-                {[
-                  { key: "all", label: "Tous" },
-                  { key: "brouillon", label: "Brouillons" },
-                  { key: "pret", label: "Prets" },
-                  { key: "en_cours", label: "En cours" },
-                  { key: "en_pause", label: "En pause" },
-                  { key: "termine", label: "Termines" },
-                  { key: "annule", label: "Annules" },
-                ].map((f) => (
-                  <button
-                    key={f.key}
-                    onClick={() => setStatusFilter(f.key)}
-                    className={"rounded-md border px-2.5 py-1 transition-colors " + (statusFilter === f.key ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted border-border")}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Suivi fabrication</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="text-left p-3">Coffret</th>
+                  <th className="text-right p-3">Quantité</th>
+                  <th className="text-center p-3">Priorité</th>
+                  <th className="text-center p-3">Statut</th>
+                  <th className="text-right p-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(orders.data ?? []).length === 0 ? (
+                  <tr>
+                    <td className="p-4 text-sm text-muted-foreground" colSpan={5}>Aucune donnée disponible</td>
+                  </tr>
+                ) : (orders.data ?? []).map((o: any) => (
+                  (() => {
+                    const status = normalizeProductionStatus(String(o.status));
+                    const canStart = status === "draft" || status === "ready";
+                    const canPause = status === "in_progress";
+                    const canResume = status === "paused";
+                    const canFinish = status === "draft" || status === "ready" || status === "in_progress" || status === "paused";
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Ordres de fabrication</CardTitle></CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
-                    <tr>
-                      <th className="text-left p-3">Référence</th>
-                      <th className="text-left p-3">Coffret</th>
-                      <th className="text-right p-3">Qté</th>
-                      <th className="text-center p-3">Statut</th>
-                      <th className="text-right p-3">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(orders.data ?? [])
-                      .filter((o: any) => statusFilter === "all" || o.status === statusFilter)
-                      .map((o: any) => (
+                    return (
                       <tr key={o.id} className="border-t border-border">
-                        <td className="p-3 font-mono text-xs">{o.reference}</td>
                         <td className="p-3">
-                          <div className="font-medium">{o.coffret?.name}</div>
-                          <div className="text-xs text-muted-foreground font-mono">{o.coffret?.reference}</div>
+                          <div className="font-medium">{o.coffret?.name ?? "Aucune donnée disponible"}</div>
+                          <div className="text-xs text-muted-foreground font-mono">{o.coffret?.reference ?? "Aucune donnée disponible"}</div>
                         </td>
                         <td className="p-3 text-right tabular font-semibold">{fmtInt(o.quantity)}</td>
                         <td className="p-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <StatusBadge status={o.status} />
-                            {Number(o.priority ?? 0) === 1 && (
-                              <span className="inline-flex items-center rounded-sm border border-destructive/30 bg-destructive/15 px-2 py-0.5 text-[11px] font-medium text-destructive">
-                                Urgent
-                              </span>
-                            )}
-                          </div>
+                          <span className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-[11px] font-medium ${Number(o.priority ?? 0) === 1 ? "border-destructive/30 bg-destructive/15 text-destructive" : "border-border bg-muted text-muted-foreground"}`}>
+                            {Number(o.priority ?? 0) === 1 ? "Urgent" : "Normal"}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-[11px] font-medium ${productionStatusMeta[status ?? ""]?.cls ?? "bg-muted text-muted-foreground border border-border"}`}>
+                            {productionStatusMeta[status ?? ""]?.label ?? String(o.status)}
+                          </span>
                         </td>
                         <td className="p-3 text-right">
                           <div className="inline-flex gap-1.5">
-                            {o.status === "brouillon" && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "pret" })} disabled={setOrderStatus.isPending}>
-                                <PlayCircle className="h-3.5 w-3.5" /> Mettre pret
-                              </Button>
-                            )}
-                            {o.status === "pret" && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "en_cours" })} disabled={setOrderStatus.isPending}>
+                            {canStart && (
+                              <Button size="sm" variant="outline" onClick={() => transition.mutate({ id: o.id, status: "in_progress" })} disabled={transition.isPending}>
                                 Démarrer
                               </Button>
                             )}
-                            {(o.status === "en_cours") && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "en_pause" })} disabled={setOrderStatus.isPending}>
-                                Pause
+                            {canPause && (
+                              <Button size="sm" variant="outline" onClick={() => transition.mutate({ id: o.id, status: "paused" })} disabled={transition.isPending}>
+                                Mettre en pause
                               </Button>
                             )}
-                            {o.status === "en_pause" && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "en_cours" })} disabled={setOrderStatus.isPending}>
+                            {canResume && (
+                              <Button size="sm" variant="outline" onClick={() => transition.mutate({ id: o.id, status: "in_progress" })} disabled={transition.isPending}>
                                 Reprendre
                               </Button>
                             )}
-                            {(o.status === "pret" || o.status === "en_cours" || o.status === "en_pause") && (
-                              <Button size="sm" variant="outline" onClick={() => validateOrder.mutate(o.id)} disabled={validateOrder.isPending}>
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Valider
+                            {canFinish && (
+                              <Button size="sm" variant="outline" onClick={() => finish.mutate(o.id)} disabled={finish.isPending}>
+                                Terminer
                               </Button>
-                            )}
-                            {(o.status === "brouillon" || o.status === "en_pause") && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "annule" })} disabled={setOrderStatus.isPending}>
-                                Annuler
-                              </Button>
-                            )}
-                            {o.status === "termine" && (
-                              <span className="text-xs text-success inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Termine</span>
-                            )}
-                            {o.status === "annule" && (
-                              <span className="text-xs text-muted-foreground inline-flex items-center gap-1">Annule</span>
                             )}
                           </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                    );
+                  })()
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
