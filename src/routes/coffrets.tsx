@@ -259,7 +259,7 @@ function CoffretsPage() {
                   </thead>
                   <tbody>
                     {(bomLines.data ?? []).map((n) => (
-                      <NomenclatureRow
+                      <BomComponentRow
                         key={n.id}
                         row={n}
                         onSave={(quantity) => updateBomLine.mutate({ id: n.id, quantity })}
@@ -280,7 +280,7 @@ function CoffretsPage() {
   );
 }
 
-function NomenclatureRow({ row, onSave, onDelete }: { row: any; onSave: (quantity: number) => void; onDelete: () => void }) {
+function BomComponentRow({ row, onSave, onDelete }: { row: any; onSave: (quantity: number) => void; onDelete: () => void }) {
   const [qty, setQty] = useState(String(row.quantity ?? 0));
 
   return (

@@ -192,6 +192,7 @@ function ProductionPage() {
           p_status: toDbProductionStatus("draft"),
           p_priority: urgent ? 1 : 0,
           p_notes: null,
+          p_idempotency_key: `production:${row.id}:${row.coffret_id}:${row.quantity}:${urgent ? 1 : 0}`,
         });
         if (error) throw error;
 
