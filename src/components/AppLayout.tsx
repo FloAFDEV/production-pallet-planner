@@ -1,5 +1,5 @@
 import { Link, Outlet } from "@tanstack/react-router";
-import { LayoutDashboard, Factory, Boxes, Truck, Package, Layers } from "lucide-react";
+import { LayoutDashboard, Factory, Boxes, Truck, Layers } from "lucide-react";
 import { UI } from "@/lib/uiLabels";
 import agecetLogo from "@/assets/logo_agecet_hands.jpg";
 

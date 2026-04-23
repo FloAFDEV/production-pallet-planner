@@ -39,7 +39,7 @@ function StockPage() {
     queryKey: ["stock_movements"],
     queryFn: async () => {
       const { data, error } = await sb
-        .from("stock_movements")
+        .from("mouvements")
         .select("*, composant:composants(reference,name)")
         .order("created_at", { ascending: false })
         .limit(100);

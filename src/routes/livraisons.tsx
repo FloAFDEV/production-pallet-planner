@@ -28,7 +28,6 @@ export const Route = createFileRoute("/livraisons")({
 
 function LivraisonsPage() {
   const sb = supabase as any;
-  const [exportYear, setExportYear] = useState(String(new Date().getFullYear()));
 
   const commercialOrders = useQuery({
     queryKey: ["orders", "history"],
@@ -54,68 +53,31 @@ function LivraisonsPage() {
   const livraisons = useQuery({
     queryKey: ["livraisons"],
     queryFn: async () => {
-      const { data, error } = await sb
+      const { data: livraisonsData, error } = await sb
         .from("livraisons")
-        .select("*, client_entity:clients(id,name,address,city,postal_code,country), items:livraison_items(*, coffret:coffrets(reference,name))")
+        .select("*, items:livraison_items(*, coffret:coffrets(reference,name))")
         .order("date", { ascending: false });
       if (error) throw error;
-      return data;
-    },
-  });
 
-  const exportCompta = useMutation({
-    mutationFn: async () => {
-      const year = Number(exportYear);
-      if (!Number.isInteger(year) || year < 2000 || year > 2100) {
-        throw new Error("Annee export invalide");
+      const clientIds = Array.from(
+        new Set(((livraisonsData ?? []) as any[]).map((liv) => liv.client_id).filter(Boolean))
+      );
+      let clientById = new Map<string, any>();
+
+      if (clientIds.length > 0) {
+        const { data: clientsData, error: clientsError } = await sb
+          .from("clients")
+          .select("id,name,address,city,postal_code,country")
+          .in("id", clientIds);
+        if (clientsError) throw clientsError;
+        clientById = new Map((clientsData ?? []).map((client: any) => [client.id, client]));
       }
 
-      const start = `${year}-01-01`;
-      const end = `${year}-12-31`;
-
-      const { data, error } = await sb
-        .from("livraisons")
-        .select("reference,date,status,total_palette,total_poids,client_entity:clients(name),items:livraison_items(quantity,coffret:coffrets(reference,name))")
-        .gte("date", start)
-        .lte("date", end)
-        .eq("status", "livre")
-        .order("date", { ascending: true });
-      if (error) throw error;
-
-      const rows: string[] = [];
-      rows.push("reference_bl;date_livraison;client;produit;quantite;poids_total;nombre_palettes;statut");
-
-      for (const liv of (data ?? []) as any[]) {
-        const client = (liv.client_entity?.name ?? "").replace(/;/g, ",");
-        const date = liv.date ?? "";
-        const status = liv.status ?? "";
-        for (const it of (liv.items ?? []) as any[]) {
-          const produit = (it.coffret?.reference ?? it.coffret?.name ?? "").replace(/;/g, ",");
-          rows.push([
-            liv.reference ?? "",
-            date,
-            client,
-            produit,
-            String(it.quantity ?? 0),
-            String(liv.total_poids ?? 0),
-            String(liv.total_palette ?? 0),
-            status,
-          ].join(";"));
-        }
-      }
-
-      const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `export_bl_livre_${year}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      return (livraisonsData ?? []).map((liv: any) => ({
+        ...liv,
+        client_entity: liv.client_id ? clientById.get(liv.client_id) ?? null : null,
+      }));
     },
-    onSuccess: () => toast.success("Export comptable genere"),
-    onError: (e: Error) => toast.error(e.message),
   });
 
   return (
@@ -128,11 +90,6 @@ function LivraisonsPage() {
           <p className="text-xs text-muted-foreground mt-1">Les clients se renseignent ici (bouton Nouveau client), puis sont selectionnables a la creation d'un BL.</p>
         </div>
         <div className="flex items-end gap-2 flex-wrap">
-          <div>
-            <Label className="text-xs text-muted-foreground">Export annee</Label>
-            <Input className="w-28 h-9" value={exportYear} onChange={(e) => setExportYear(e.target.value)} />
-          </div>
-          <Button variant="outline" onClick={() => exportCompta.mutate()} disabled={exportCompta.isPending}>Exporter CSV livres</Button>
           <CreateClientDialog />
           <NewLivraisonDialog />
         </div>

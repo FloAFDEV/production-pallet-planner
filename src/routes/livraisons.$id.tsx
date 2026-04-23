@@ -36,10 +36,21 @@ function LivraisonDetail() {
     queryFn: async () => {
       const { data, error } = await sb
         .from("livraisons")
-        .select("*, client_entity:clients(id,name,address,city,postal_code,country), items:livraison_items(*, coffret:coffrets(reference,name,poids_coffret,nb_par_palette))")
+        .select("*, items:livraison_items(*, coffret:coffrets(reference,name,poids_coffret,nb_par_palette))")
         .eq("id", id)
         .single();
       if (error) throw error;
+
+      if (data?.client_id) {
+        const { data: clientData, error: clientError } = await sb
+          .from("clients")
+          .select("id,name,address,city,postal_code,country")
+          .eq("id", data.client_id)
+          .single();
+        if (clientError) throw clientError;
+        return { ...data, client_entity: clientData };
+      }
+
       return data;
     },
   });
