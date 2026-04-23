@@ -343,7 +343,7 @@ function ProductionPage() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
+              <thead className="sticky top-[88px] md:top-0 z-10 bg-muted/95 text-xs uppercase tracking-wider text-muted-foreground backdrop-blur">
                 <tr>
                   <th className="text-left p-3">Coffret</th>
                   <th className="text-right p-3">Quantité</th>

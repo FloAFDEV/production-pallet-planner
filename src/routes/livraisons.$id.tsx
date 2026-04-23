@@ -172,7 +172,7 @@ function LivraisonDetail() {
             <h2 className="text-sm font-semibold mb-2">Lignes shipment</h2>
             <div className="overflow-x-auto rounded-md border border-border">
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
+                <thead className="sticky top-[88px] md:top-0 z-10 bg-muted/95 text-xs uppercase tracking-wider text-muted-foreground backdrop-blur">
                   <tr>
                     <th className="text-left p-2">Variant</th>
                     <th className="text-right p-2">Quantité</th>
@@ -203,7 +203,7 @@ function LivraisonDetail() {
             <h2 className="text-sm font-semibold mb-2">Palettes</h2>
             <div className="overflow-x-auto rounded-md border border-border">
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
+                <thead className="sticky top-[88px] md:top-0 z-10 bg-muted/95 text-xs uppercase tracking-wider text-muted-foreground backdrop-blur">
                   <tr>
                     <th className="text-left p-2">Label</th>
                     <th className="text-left p-2">Type</th>

@@ -196,7 +196,7 @@ function LivraisonsPage() {
               <CardContent>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <thead className="sticky top-[88px] md:top-0 z-10 bg-background text-xs uppercase tracking-wider text-muted-foreground">
                       <tr>
                         <th className="text-left p-2">Variant</th>
                         <th className="text-right p-2">Quantité</th>
@@ -329,7 +329,7 @@ function ClientHistoryPanel({
       <CardContent className="p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-muted/70 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <thead className="sticky top-[88px] md:top-0 z-10 bg-muted/95 text-[11px] uppercase tracking-wider text-muted-foreground backdrop-blur">
               <tr>
                 <th className="text-left p-2.5">Client</th>
                 <th className="text-right p-2.5">Shipments</th>

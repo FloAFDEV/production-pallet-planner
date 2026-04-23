@@ -288,7 +288,7 @@ function CoffretsPage() {
 
               <div className="overflow-x-auto border border-border rounded-sm">
                 <table className="w-full text-sm">
-                  <thead className="bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <thead className="sticky top-[88px] md:top-0 z-10 bg-muted/95 text-[11px] uppercase tracking-wider text-muted-foreground backdrop-blur">
                     <tr>
                       <th className="text-left p-2">Reference</th>
                       <th className="text-left p-2">Composant</th>

@@ -87,7 +87,7 @@ function StockPage() {
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
+                  <thead className="sticky top-[88px] md:top-0 z-10 bg-muted/95 text-xs uppercase tracking-wider text-muted-foreground backdrop-blur">
                     <tr>
                       <th className="text-left p-3">Référence</th>
                       <th className="text-left p-3">Désignation</th>
@@ -145,7 +145,7 @@ function StockPage() {
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
+                  <thead className="sticky top-[88px] md:top-0 z-10 bg-muted/95 text-xs uppercase tracking-wider text-muted-foreground backdrop-blur">
                     <tr>
                       <th className="text-left p-3">Date</th>
                       <th className="text-left p-3">Composant</th>
