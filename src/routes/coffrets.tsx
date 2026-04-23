@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fmtInt } from "@/lib/format";
+import { getProductionFeasibility } from "@/lib/getProductionFeasibility";
 
 export const Route = createFileRoute("/coffrets")({
   head: () => ({
@@ -33,6 +34,7 @@ function CoffretsPage() {
 
   const [newCompId, setNewCompId] = useState("");
   const [newCompQty, setNewCompQty] = useState("1");
+  const [feasibilityQty, setFeasibilityQty] = useState("1");
 
   const coffrets = useQuery({
     queryKey: ["coffrets", "manage"],
@@ -165,6 +167,13 @@ function CoffretsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const feasibilityQuantity = Math.max(0, Number(feasibilityQty || 0));
+  const feasibility = useQuery({
+    queryKey: ["production_feasibility", selectedId, feasibilityQuantity],
+    enabled: Boolean(selectedId) && feasibilityQuantity > 0,
+    queryFn: async () => getProductionFeasibility(selectedId, feasibilityQuantity),
+  });
+
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto">
       <header className="mb-4">
@@ -272,6 +281,89 @@ function CoffretsPage() {
                   </tbody>
                 </table>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">Faisabilité production</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="max-w-xs space-y-1">
+                <Label>Quantité à produire</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={feasibilityQty}
+                  onChange={(e) => setFeasibilityQty(e.target.value)}
+                />
+              </div>
+
+              {feasibilityQuantity <= 0 ? (
+                <div className="text-sm text-muted-foreground">Saisir une quantité supérieure à 0.</div>
+              ) : feasibility.isLoading ? (
+                <div className="text-sm text-muted-foreground">Calcul en cours...</div>
+              ) : !feasibility.data ? (
+                <div className="text-sm text-muted-foreground">Aucune donnée disponible.</div>
+              ) : (
+                <>
+                  <div className={"rounded-md border px-3 py-2 text-sm font-medium " + (feasibility.data.can_produce
+                    ? "border-success/30 bg-success/10 text-success"
+                    : "border-destructive/30 bg-destructive/10 text-destructive")}>
+                    {feasibility.data.can_produce ? "Fabrication possible" : "Fabrication impossible"}
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      ({fmtInt(feasibility.data.summary.total_components)} composants, manque total {fmtInt(feasibility.data.summary.total_missing)})
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto border border-border rounded-sm">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/95 text-[11px] uppercase tracking-wider text-muted-foreground">
+                        <tr>
+                          <th className="text-left p-2">Composant</th>
+                          <th className="text-right p-2">Besoin</th>
+                          <th className="text-right p-2">Stock</th>
+                          <th className="text-center p-2">Statut</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {feasibility.data.components.map((component) => (
+                          <tr key={component.composant_id} className="border-t border-border">
+                            <td className="p-2 font-medium">{component.name}</td>
+                            <td className="p-2 text-right tabular">{fmtInt(component.needed)}</td>
+                            <td className="p-2 text-right tabular">{fmtInt(component.available)}</td>
+                            <td className="p-2 text-center">
+                              {component.status === "ok" ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-success/15 text-success border border-success/30">OK</span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-destructive/15 text-destructive border border-destructive/30">MANQUE</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {feasibility.data.components.length === 0 && (
+                          <tr>
+                            <td className="p-3 text-sm text-muted-foreground" colSpan={4}>Aucun composant à analyser.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="rounded-md border border-border p-3">
+                    <div className="text-sm font-medium mb-2">Manques</div>
+                    {feasibility.data.missing.length === 0 ? (
+                      <div className="text-sm text-success">Aucun composant insuffisant.</div>
+                    ) : (
+                      <ul className="space-y-1 text-sm">
+                        {feasibility.data.missing.map((item) => (
+                          <li key={item.composant_id} className="text-destructive">
+                            {item.name} : commander {fmtInt(item.missing)} (besoin {fmtInt(item.needed)}, dispo {fmtInt(item.available)})
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

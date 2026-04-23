@@ -14,6 +14,7 @@ import {
   productionStatusMeta,
   toDbProductionStatus,
 } from "@/lib/domain";
+import { getProductionFeasibility } from "@/lib/getProductionFeasibility";
 
 type ProdRow = { id: string; coffret_id: string; quantity: number };
 
@@ -55,49 +56,6 @@ function ProductionPage() {
     queryKey: ["production", "checks", JSON.stringify(rows.map((r) => ({ coffret_id: r.coffret_id, quantity: r.quantity })))],
     enabled: rows.some((r) => r.coffret_id && r.quantity > 0),
     queryFn: async () => {
-      const selectedRows = rows.filter((r) => r.coffret_id && r.quantity > 0);
-      const coffretIds = Array.from(new Set(selectedRows.map((r) => r.coffret_id)));
-
-      const { data: componentRows, error: componentError } = await sb
-        .from("coffret_components")
-        .select("coffret_id,composant_id,quantity")
-        .in("coffret_id", coffretIds);
-      if (componentError) throw componentError;
-
-      const componentIds = Array.from(
-        new Set(((componentRows ?? []) as any[]).map((r) => r.composant_id).filter(Boolean))
-      );
-
-      const { data: inRows, error: inError } = await sb
-        .from("stock_movements")
-        .select("composant_id,total:quantity.sum()")
-        .in("composant_id", componentIds)
-        .in("type", ["IN", "ADJUST"]);
-      if (inError) throw inError;
-
-      const { data: outRows, error: outError } = await sb
-        .from("stock_movements")
-        .select("composant_id,total:quantity.sum()")
-        .in("composant_id", componentIds)
-        .eq("type", "OUT");
-      if (outError) throw outError;
-
-      const { data: composantsRows, error: composantsError } = await sb
-        .from("composants")
-        .select("id,reference,name")
-        .in("id", componentIds);
-      if (composantsError) throw composantsError;
-
-      const componentsByCoffret = new Map<string, any[]>();
-      for (const row of (componentRows ?? []) as any[]) {
-        const current = componentsByCoffret.get(row.coffret_id) ?? [];
-        current.push(row);
-        componentsByCoffret.set(row.coffret_id, current);
-      }
-      const inById = new Map<string, number>((inRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)]));
-      const outById = new Map<string, number>((outRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)]));
-      const composantMap = new Map<string, any>((composantsRows ?? []).map((row: any) => [row.id, row]));
-
       const checks: LineCheck[] = [];
 
       for (const row of rows) {
@@ -106,34 +64,21 @@ function ProductionPage() {
           continue;
         }
 
-        const coffretComponents = componentsByCoffret.get(row.coffret_id) ?? [];
-        const missing: Array<{ reference: string; name: string; manquant: number }> = [];
-        const remaining: Array<{ reference: string; name: string; apres_production: number }> = [];
-
-        for (const component of coffretComponents) {
-          const comp = composantMap.get(component.composant_id);
-          const needed = Number(component.quantity ?? 0) * row.quantity;
-          const available = (inById.get(component.composant_id) ?? 0) - (outById.get(component.composant_id) ?? 0);
-          const after = available - needed;
-
-          if (after < 0) {
-            missing.push({
-              reference: String(comp?.reference ?? ""),
-              name: String(comp?.name ?? ""),
-              manquant: Math.abs(after),
-            });
-          }
-
-          remaining.push({
-            reference: String(comp?.reference ?? ""),
-            name: String(comp?.name ?? ""),
-            apres_production: after,
-          });
-        }
+        const feasibility = await getProductionFeasibility(row.coffret_id, row.quantity);
+        const missing: Array<{ reference: string; name: string; manquant: number }> = feasibility.missing.map((item) => ({
+          reference: item.composant_id,
+          name: item.name,
+          manquant: item.missing,
+        }));
+        const remaining: Array<{ reference: string; name: string; apres_production: number }> = feasibility.components.map((item) => ({
+          reference: item.composant_id,
+          name: item.name,
+          apres_production: item.available - item.needed,
+        }));
 
         checks.push({
           rowId: row.id,
-          ok: missing.length === 0,
+          ok: feasibility.can_produce,
           missing,
           remaining,
         });
