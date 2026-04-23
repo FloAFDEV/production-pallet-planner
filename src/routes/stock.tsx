@@ -13,7 +13,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
 import { fmtDateTime, fmtInt, fmtKg } from "@/lib/format";
 import { record_stock_movement } from "@/lib/stockMovements";
-import { getStockSnapshotByComponents } from "@/lib/stockSnapshot";
 
 export const Route = createFileRoute("/stock")({
   head: () => ({
@@ -47,10 +46,13 @@ function StockPage() {
     queryKey: ["stock_snapshot", composantIds],
     enabled: composantIds.length > 0,
     queryFn: async () => {
-      const stockRows = await getStockSnapshotByComponents(composantIds);
+      const { data: stockRows, error: stockError } = await sb.rpc("get_stock_snapshot_by_components", {
+        component_ids: composantIds,
+      });
+      if (stockError) throw stockError;
 
       return {
-        stockById: new Map<string, number>((stockRows ?? []).map((row) => [row.composant_id, Number(row.available_stock ?? 0)])),
+        stockById: new Map<string, number>((stockRows ?? []).map((row: any) => [row.composant_id, Number(row.available_stock ?? 0)])),
       };
     },
   });

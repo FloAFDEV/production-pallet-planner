@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Boxes, Factory, Flame, TrendingDown } from "lucide-react";
 import { fmtInt } from "@/lib/format";
 import { productionStatusMeta } from "@/lib/domain";
-import { getStockSnapshotByComponents } from "@/lib/stockSnapshot";
 import { UI } from "@/lib/uiLabels";
 
 export const Route = createFileRoute("/")({
@@ -62,7 +61,11 @@ function Dashboard() {
     enabled: componentIds.length > 0,
     refetchInterval: 10000,
     queryFn: async () => {
-      return await getStockSnapshotByComponents(componentIds);
+      const { data, error } = await sb.rpc("get_stock_snapshot_by_components", {
+        component_ids: componentIds,
+      });
+      if (error) throw error;
+      return data ?? [];
     },
   });
 

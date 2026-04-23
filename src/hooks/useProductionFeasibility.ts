@@ -6,7 +6,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { checkProductionFeasibility } from "@/lib/productionLogic";
-import { getStockSnapshotByComponents } from "@/lib/stockSnapshot";
 
 /**
  * Hook pour vérifier la faisabilité d'une production
@@ -53,7 +52,10 @@ export function useProductionFeasibility(
     queryFn: async () => {
       const lineIds = (bomQuery.data ?? []).map((line: any) => line.composant_id);
       if (lineIds.length === 0) return [];
-      const stockRows = await getStockSnapshotByComponents(lineIds);
+      const { data: stockRows, error: stockError } = await sb.rpc("get_stock_snapshot_by_components", {
+        component_ids: lineIds,
+      });
+      if (stockError) throw stockError;
       const stockById = new Map<string, number>((stockRows ?? []).map((row) => [row.composant_id, Number(row.available_stock ?? 0)]));
 
       return lineIds.map((id: string) => ({

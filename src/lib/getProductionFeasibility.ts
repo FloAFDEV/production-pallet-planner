@@ -1,5 +1,4 @@
 import { supabase } from "@/integrations/supabase/client";
-import { getStockSnapshotByComponents } from "@/lib/stockSnapshot";
 
 export type ProductionFeasibilityResult = {
   can_produce: boolean;
@@ -78,7 +77,10 @@ export async function getProductionFeasibility(
   if (composantError) throw composantError;
 
   const nameById = new Map<string, string>((composantRows ?? []).map((row: any) => [row.id, String(row.name ?? "Inconnu")]));
-  const stockRows = await getStockSnapshotByComponents(composantIds);
+  const { data: stockRows, error: stockError } = await sb.rpc("get_stock_snapshot_by_components", {
+    component_ids: composantIds,
+  });
+  if (stockError) throw stockError;
   const stockById = new Map<string, number>(stockRows.map((row) => [row.composant_id, Number(row.available_stock ?? 0)]));
 
   const components = composantIds.map((composantId) => {
