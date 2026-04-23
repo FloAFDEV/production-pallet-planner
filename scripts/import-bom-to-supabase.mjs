@@ -114,7 +114,7 @@ async function main() {
   const coffretIdByRef = new Map((coffrets ?? []).map((c) => [c.reference, c.id]));
   const composantIdByRef = new Map((composants ?? []).map((c) => [c.reference, c.id]));
 
-  const nomenclatureUpserts = rows
+  const bomUpserts = rows
     .map((r) => ({
       coffret_id: coffretIdByRef.get(r.coffretRef),
       composant_id: composantIdByRef.get(r.pieceRef),
@@ -122,8 +122,8 @@ async function main() {
     }))
     .filter((r) => Boolean(r.coffret_id && r.composant_id));
 
-  for (const batch of chunk(nomenclatureUpserts, 1000)) {
-    const { error } = await sb.from("nomenclatures").upsert(batch, {
+  for (const batch of chunk(bomUpserts, 1000)) {
+    const { error } = await sb.from("coffret_components").upsert(batch, {
       onConflict: "coffret_id,composant_id",
       ignoreDuplicates: false,
     });

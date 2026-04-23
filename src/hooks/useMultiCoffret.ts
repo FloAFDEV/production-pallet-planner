@@ -139,8 +139,8 @@ export function useMultiCoffretFeasibility(
 }
 
 /**
- * CREATE PRODUCTION ORDER (REAL FLOW)
- * IMPORTANT: NO FAKE RPC, ONLY REAL INSERT
+ * CREATE PRODUCTION ORDER (RPC ONLY)
+ * Toute creation OF passe par create_production_order_atomic.
  */
 export function useCreateProductionOrderSafe() {
   return useMutation({
@@ -151,19 +151,21 @@ export function useCreateProductionOrderSafe() {
       priority?: 0 | 1;
       notes?: string;
     }) => {
-      const { data, error } = await supabase
-        .from("production_orders")
-        .insert({
-          coffret_id: params.coffret_id,
-          quantity: params.quantity,
-          status: params.status ?? "draft",
-          priority: params.priority ?? 0,
-          notes: params.notes ?? null,
-        } as any)
-        .select()
-        .single();
+      const idempotencyKey = `multi:${params.coffret_id}:${params.quantity}:${params.status ?? "draft"}:${params.priority ?? 0}:${params.notes ?? ""}`;
+
+      const { data, error } = await (supabase as any).rpc("create_production_order_atomic", {
+        p_coffret_id: params.coffret_id,
+        p_quantity: params.quantity,
+        p_status: params.status ?? "draft",
+        p_priority: params.priority ?? 0,
+        p_notes: params.notes ?? null,
+        p_idempotency_key: idempotencyKey,
+      });
 
       if (error) throw error;
+      if (data && data.success === false) {
+        throw new Error(data.error || "Creation production impossible");
+      }
 
       return {
         success: true,
@@ -174,22 +176,19 @@ export function useCreateProductionOrderSafe() {
 }
 
 /**
- * CANCEL ORDER (SAFE SOFT CANCEL)
- * No RPC dependency - direct DB update
+ * CANCEL ORDER (RPC ONLY)
  */
 export function useCancelProductionOrderSafe() {
   return useMutation({
     mutationFn: async (orderId: string) => {
-      const { data, error } = await supabase
-        .from("production_orders")
-        .update({
-          status: "cancelled",
-        })
-        .eq("id", orderId)
-        .select()
-        .single();
+      const { data, error } = await (supabase as any).rpc("cancel_production_order_with_unreserve", {
+        p_order_id: orderId,
+      });
 
       if (error) throw error;
+      if (data && data.success === false) {
+        throw new Error(data.error || "Annulation production impossible");
+      }
 
       return {
         success: true,

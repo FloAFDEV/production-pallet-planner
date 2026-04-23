@@ -1,5 +1,5 @@
 -- Import BOM/coffrets fourni (partie visible du message)
--- Schema cible (legacy project): coffrets, composants, nomenclatures
+-- Schema cible: coffrets, composants, coffret_components
 -- Idempotent: ON CONFLICT
 
 begin;
@@ -80,7 +80,7 @@ values
   ('EMBCSTART625', 'EMBALLAGE CSTART 625')
 on conflict (reference) do update set name = excluded.name;
 
--- Nomenclatures (subset shown in prompt)
+-- BOM (subset shown in prompt)
 with src(coffret_ref, composant_ref, qty) as (
   values
     ('ASBNEP1101', 'PMFONDV250001', 1),
@@ -173,7 +173,7 @@ with src(coffret_ref, composant_ref, qty) as (
     ('ASBNEP1401', 'CORDBALRJF040C', 1),
     ('ASBNEP1401', 'EMBCSTART625', 1)
 )
-insert into nomenclatures (coffret_id, composant_id, quantity)
+insert into coffret_components (coffret_id, composant_id, quantity)
 select c.id, p.id, src.qty
 from src
 join coffrets c on c.reference = src.coffret_ref

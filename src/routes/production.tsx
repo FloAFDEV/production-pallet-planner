@@ -154,11 +154,19 @@ function ProductionPage() {
 
   const transition = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: "in_progress" | "paused" }) => {
-      const { error } = await sb
-        .from("production_orders")
-        .update({ status })
-        .eq("id", id);
+      const statusMap: Record<string, string> = {
+        in_progress: "in_progress",
+        paused: "paused",
+      };
+
+      const { data, error } = await sb.rpc("transition_production_order_status", {
+        p_order_id: id,
+        p_status: statusMap[status] ?? status,
+      });
       if (error) throw error;
+      if (data && data.success === false) {
+        throw new Error(data.error || "Transition production impossible");
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["production_orders"] });
@@ -169,11 +177,13 @@ function ProductionPage() {
 
   const finish = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await sb
-        .from("production_orders")
-        .update({ status: "done", done_at: new Date().toISOString() })
-        .eq("id", id);
+      const { data, error } = await sb.rpc("validate_production_order", {
+        p_order_id: id,
+      });
       if (error) throw error;
+      if (data && data.success === false) {
+        throw new Error(data.error || "Validation production impossible");
+      }
     },
     onSuccess: () => {
       toast.success("Fabrication terminée");

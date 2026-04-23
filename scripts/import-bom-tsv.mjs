@@ -83,10 +83,10 @@ for (const [ref, name] of composants.entries()) {
   );
 }
 
-// Upsert nomenclatures (legacy schema).
+// Upsert BOM into coffret_components.
 for (const r of rows) {
   sql.push(`
-insert into nomenclatures (coffret_id, composant_id, quantity)
+insert into coffret_components (coffret_id, composant_id, quantity)
 select c.id, p.id, ${r.qty}
 from coffrets c
 join composants p on p.reference = '${esc(r.pieceRef)}'
