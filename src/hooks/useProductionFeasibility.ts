@@ -55,7 +55,9 @@ export function useProductionFeasibility(
       const { data: stockRows, error: stockError } = await sb.rpc("get_stock_snapshot_by_components", {
         component_ids: lineIds,
       });
-      if (stockError) throw stockError;
+      if (stockError) {
+        console.warn("[useProductionFeasibility] stock snapshot unavailable", stockError.message);
+      }
       const stockById = new Map<string, number>((stockRows ?? []).map((row) => [row.composant_id, Number(row.available_stock ?? 0)]));
 
       return lineIds.map((id: string) => ({

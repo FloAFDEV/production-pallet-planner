@@ -49,7 +49,12 @@ function StockPage() {
       const { data: stockRows, error: stockError } = await sb.rpc("get_stock_snapshot_by_components", {
         component_ids: composantIds,
       });
-      if (stockError) throw stockError;
+      if (stockError) {
+        console.warn("[stock] stock snapshot unavailable", stockError.message);
+        return {
+          stockById: new Map<string, number>(),
+        };
+      }
 
       return {
         stockById: new Map<string, number>(

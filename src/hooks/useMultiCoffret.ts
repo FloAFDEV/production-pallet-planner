@@ -63,7 +63,9 @@ export function useMultiCoffretFeasibility(
         const { data: stockRows, error: stockError } = await (supabase as any).rpc("get_stock_snapshot_by_components", {
           component_ids: composantIds,
         });
-        if (stockError) throw stockError;
+        if (stockError) {
+          console.warn("[MultiCoffretFeasibility] stock snapshot unavailable", stockError.message);
+        }
 
         const { data: composantsRows, error: composantsError } = await (supabase as any)
           .from("composants")

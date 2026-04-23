@@ -80,8 +80,10 @@ export async function getProductionFeasibility(
   const { data: stockRows, error: stockError } = await sb.rpc("get_stock_snapshot_by_components", {
     component_ids: composantIds,
   });
-  if (stockError) throw stockError;
-  const stockById = new Map<string, number>(stockRows.map((row) => [row.composant_id, Number(row.available_stock ?? 0)]));
+  if (stockError) {
+    console.warn("[getProductionFeasibility] stock snapshot unavailable", stockError.message);
+  }
+  const stockById = new Map<string, number>((stockRows ?? []).map((row) => [row.composant_id, Number(row.available_stock ?? 0)]));
 
   const components = composantIds.map((composantId) => {
     const needed = neededByComposant.get(composantId) ?? 0;
