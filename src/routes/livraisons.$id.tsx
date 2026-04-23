@@ -209,7 +209,7 @@ function LivraisonDetail() {
         if (eLines) throw eLines;
       }
 
-      await logAudit("shipment_prepared", {
+          await logAudit("shipment_prepared", {
         livraison_id: data.id,
         reference: data.reference,
       });
@@ -369,7 +369,7 @@ function LivraisonDetail() {
       }
       const allowed = shipmentStatus === "draft" || shipmentStatus === "packing";
       if (!allowed) {
-        throw new Error("Desallocation interdite hors draft/packing.");
+        throw new Error("Desallocation interdite hors brouillon/preparation.");
       }
 
       const confirmRemove = window.confirm("Retirer cette ligne de la palette ?");
@@ -576,10 +576,10 @@ function LivraisonDetail() {
 
           <div className="mt-10 border-t border-border pt-6">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Palettisation expedition</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Préparation livraison</h3>
               {!shipment.data ? (
                 <Button size="sm" onClick={() => createShipment.mutate()} disabled={createShipment.isPending}>
-                  Preparer expedition
+                  Préparer
                 </Button>
               ) : (
                 <div className="flex items-center gap-2">
@@ -592,19 +592,19 @@ function LivraisonDetail() {
             </div>
 
             {!shipment.data ? (
-              <p className="text-sm text-muted-foreground">Aucune expedition creee. Le BL reste une intention metier tant que la preparation n'est pas lancee.</p>
+              <p className="text-sm text-muted-foreground">Aucune préparation créée. Le BL reste une intention métier tant que la préparation n'est pas lancée.</p>
             ) : (
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-2 print:hidden">
-                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("draft")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Draft</Button>
-                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("packed")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Packed</Button>
-                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("ready")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Ready</Button>
-                  <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("shipped")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Shipped</Button>
+                    <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("draft")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Brouillon</Button>
+                    <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("packed")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Pret</Button>
+                    <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("ready")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Expedie</Button>
+                    <Button size="sm" variant="outline" onClick={() => updateShipmentStatus.mutate("shipped")} disabled={isLivraisonLocked || isReadonly || updateShipmentStatus.isPending}>Livre</Button>
                 </div>
 
                 {isEditable && (
                   <div className="rounded-md border border-border bg-muted/20 p-3 print:hidden">
-                    <p className="text-xs text-muted-foreground mb-2">Mode edition (draft): palettes modifiables.</p>
+                    <p className="text-xs text-muted-foreground mb-2">Mode brouillon: palettes modifiables.</p>
                     <div className="grid md:grid-cols-4 gap-2 items-end">
                       <div className="md:col-span-3">
                         <div className="text-xs text-muted-foreground mb-1">Type de palette</div>
@@ -626,7 +626,7 @@ function LivraisonDetail() {
 
                 {isPacking && (
                   <div className="rounded-md border border-info/30 bg-info/5 p-3 print:hidden">
-                    <p className="text-xs text-info mb-2">Mode packing: allocation des lignes vers palettes active.</p>
+                    <p className="text-xs text-info mb-2">Mode préparation: affectation des lignes vers palettes active.</p>
                     <div className="grid md:grid-cols-4 gap-2 items-end">
                       <div>
                         <div className="text-xs text-muted-foreground mb-1">Palette</div>
@@ -640,7 +640,7 @@ function LivraisonDetail() {
                         </Select>
                       </div>
                       <div>
-                        <div className="text-xs text-muted-foreground mb-1">Ligne shipment</div>
+                        <div className="text-xs text-muted-foreground mb-1">Ligne</div>
                         <Select value={allocLineId} onValueChange={setAllocLineId}>
                           <SelectTrigger><SelectValue placeholder="Ligne" /></SelectTrigger>
                           <SelectContent>
@@ -672,7 +672,7 @@ function LivraisonDetail() {
                 )}
 
                 {isReadonly && (
-                  <p className="text-sm text-muted-foreground">Expedition shipped: lecture seule.</p>
+                  <p className="text-sm text-muted-foreground">Livraison expediee: lecture seule.</p>
                 )}
 
                 {(shipment.data.pallets ?? []).map((p: any) => {
@@ -706,7 +706,7 @@ function LivraisonDetail() {
                                   disabled={removeAllocatedLine.isPending}
                                   className="h-7 px-2"
                                 >
-                                  Retirer de palette
+                                    Retirer
                                 </Button>
                               )}
                             </div>
