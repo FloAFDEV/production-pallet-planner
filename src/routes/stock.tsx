@@ -1,6 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,10 +21,6 @@ export const Route = createFileRoute("/stock")({
       { name: "description", content: "Liste des composants, niveaux de stock et historique des mouvements." },
     ],
   }),
-  component: StockPage,
-});
-
-function StockPage() {
   const sb = supabase as any;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [presetComponentId, setPresetComponentId] = useState<string>("");
@@ -354,3 +350,7 @@ function MouvementDialog({
     </Dialog>
   );
 }
+function useMemo(arg0: () => any, arg1: any[]) {
+  throw new Error("Function not implemented.");
+}
+
