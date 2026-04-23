@@ -60,19 +60,11 @@ export function useMultiCoffretFeasibility(
           new Set(((bomRows ?? []) as any[]).map((row) => row.composant_id).filter(Boolean))
         );
 
-        const { data: inRows, error: inError } = await (supabase as any)
-          .from("stock_movements")
-          .select("composant_id,total:quantity.sum()")
-          .in("composant_id", composantIds)
-          .in("type", ["IN", "ADJUST"]);
-        if (inError) throw inError;
-
-        const { data: outRows, error: outError } = await (supabase as any)
-          .from("stock_movements")
-          .select("composant_id,total:quantity.sum()")
-          .in("composant_id", composantIds)
-          .eq("type", "OUT");
-        if (outError) throw outError;
+        const { data: stockRows, error: stockError } = await (supabase as any)
+          .from("stock_by_composant")
+          .select("composant_id,total_stock")
+          .in("composant_id", composantIds);
+        if (stockError) throw stockError;
 
         const { data: composantsRows, error: composantsError } = await (supabase as any)
           .from("composants")
@@ -87,8 +79,7 @@ export function useMultiCoffretFeasibility(
           bomByCoffret.set(row.coffret_id, current);
         }
 
-        const inById = new Map<string, number>((inRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)]));
-        const outById = new Map<string, number>((outRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)]));
+        const stockById = new Map<string, number>((stockRows ?? []).map((row: any) => [row.composant_id, Number(row.total_stock ?? 0)]));
         const compById = new Map<string, any>((composantsRows ?? []).map((row: any) => [row.id, row]));
 
         const neededByComposant = new Map<string, number>();
@@ -102,7 +93,7 @@ export function useMultiCoffretFeasibility(
 
         const components = Array.from(neededByComposant.entries()).map(([composant_id, needed]) => {
           const comp = compById.get(composant_id);
-          const stock = (inById.get(composant_id) ?? 0) - (outById.get(composant_id) ?? 0);
+          const stock = stockById.get(composant_id) ?? 0;
           const after_production = stock - needed;
           const missing = Math.max(0, needed - stock);
           const min_stock = Number(comp?.min_stock ?? 0);

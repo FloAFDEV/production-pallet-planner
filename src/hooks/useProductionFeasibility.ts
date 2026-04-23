@@ -55,26 +55,17 @@ export function useProductionFeasibility(
       const lineIds = (bomQuery.data ?? []).map((line: any) => line.composant_id);
       if (lineIds.length === 0) return [];
 
-      const { data: inRows, error: inError } = await sb
-        .from("stock_movements")
-        .select("composant_id,total:quantity.sum()")
-        .in("composant_id", lineIds)
-        .in("type", ["IN", "ADJUST"]);
-      if (inError) throw inError;
+      const { data: stockRows, error: stockError } = await sb
+        .from("stock_by_composant")
+        .select("composant_id,total_stock")
+        .in("composant_id", lineIds);
+      if (stockError) throw stockError;
 
-      const { data: outRows, error: outError } = await sb
-        .from("stock_movements")
-        .select("composant_id,total:quantity.sum()")
-        .in("composant_id", lineIds)
-        .eq("type", "OUT");
-      if (outError) throw outError;
-
-      const inById = new Map<string, number>((inRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)]));
-      const outById = new Map<string, number>((outRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)]));
+      const stockById = new Map<string, number>((stockRows ?? []).map((row: any) => [row.composant_id, Number(row.total_stock ?? 0)]));
 
       return lineIds.map((id: string) => ({
         composant_id: id,
-        available: (inById.get(id) ?? 0) - (outById.get(id) ?? 0),
+        available: stockById.get(id) ?? 0,
       }));
     },
   });

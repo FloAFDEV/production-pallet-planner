@@ -43,21 +43,13 @@ function StockPage() {
   const stockAgg = useQuery({
     queryKey: ["stock_movements", "agg"],
     queryFn: async () => {
-      const { data: inRows, error: inError } = await sb
-        .from("stock_movements")
-        .select("composant_id,total:quantity.sum()")
-        .in("type", ["IN", "ADJUST"]);
-      if (inError) throw inError;
-
-      const { data: outRows, error: outError } = await sb
-        .from("stock_movements")
-        .select("composant_id,total:quantity.sum()")
-        .eq("type", "OUT");
-      if (outError) throw outError;
+      const { data: stockRows, error: stockError } = await sb
+        .from("stock_by_composant")
+        .select("composant_id,total_stock");
+      if (stockError) throw stockError;
 
       return {
-        inById: new Map<string, number>((inRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)])),
-        outById: new Map<string, number>((outRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)])),
+        stockById: new Map<string, number>((stockRows ?? []).map((row: any) => [row.composant_id, Number(row.total_stock ?? 0)])),
       };
     },
   });
@@ -147,7 +139,7 @@ function StockPage() {
                         <td className="p-4 text-sm text-muted-foreground" colSpan={10}>Aucune donnée disponible</td>
                       </tr>
                     ) : (composants.data ?? []).map((c: any) => {
-                      const stock = (stockAgg.data?.inById.get(c.id) ?? 0) - (stockAgg.data?.outById.get(c.id) ?? 0);
+                      const stock = stockAgg.data?.stockById.get(c.id) ?? 0;
                       const reserve = 0;
                       const disponible = stock;
                       const alerte = (c.is_active ?? true) && disponible <= Number(c.min_stock ?? 0);

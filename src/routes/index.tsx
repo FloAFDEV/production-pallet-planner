@@ -57,22 +57,12 @@ function Dashboard() {
     queryKey: ["stock_movements", "agg"],
     refetchInterval: 10000,
     queryFn: async () => {
-      const { data: inRows, error: inError } = await sb
-        .from("stock_movements")
-        .select("composant_id,total:quantity.sum()")
-        .in("type", ["IN", "ADJUST"]);
-      if (inError) throw inError;
+      const { data, error } = await sb
+        .from("stock_by_composant")
+        .select("composant_id,total_stock");
+      if (error) throw error;
 
-      const { data: outRows, error: outError } = await sb
-        .from("stock_movements")
-        .select("composant_id,total:quantity.sum()")
-        .eq("type", "OUT");
-      if (outError) throw outError;
-
-      return {
-        inRows: (inRows ?? []) as any[],
-        outRows: (outRows ?? []) as any[],
-      };
+      return (data ?? []) as any[];
     },
   });
 
@@ -182,11 +172,10 @@ function Dashboard() {
     },
   });
 
-  const inById = new Map<string, number>(((stockAgg.data?.inRows ?? []) as any[]).map((r: any) => [r.composant_id, Number(r.total ?? 0)]));
-  const outById = new Map<string, number>(((stockAgg.data?.outRows ?? []) as any[]).map((r: any) => [r.composant_id, Number(r.total ?? 0)]));
+  const stockById = new Map<string, number>(((stockAgg.data ?? []) as any[]).map((r: any) => [r.composant_id, Number(r.total_stock ?? 0)]));
 
   const composantsWithStock = ((composants.data ?? []) as any[]).map((c: any) => {
-    const stock = (inById.get(c.id) ?? 0) - (outById.get(c.id) ?? 0);
+    const stock = stockById.get(c.id) ?? 0;
     return { ...c, stock };
   });
 

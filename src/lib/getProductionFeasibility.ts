@@ -76,27 +76,18 @@ export async function getProductionFeasibility(
     .in("id", composantIds);
   if (composantError) throw composantError;
 
-  const { data: inRows, error: inError } = await sb
-    .from("stock_movements")
-    .select("composant_id,total:quantity.sum()")
-    .in("composant_id", composantIds)
-    .in("type", ["IN", "ADJUST"]);
-  if (inError) throw inError;
-
-  const { data: outRows, error: outError } = await sb
-    .from("stock_movements")
-    .select("composant_id,total:quantity.sum()")
-    .in("composant_id", composantIds)
-    .eq("type", "OUT");
-  if (outError) throw outError;
+  const { data: stockRows, error: stockError } = await sb
+    .from("stock_by_composant")
+    .select("composant_id,total_stock")
+    .in("composant_id", composantIds);
+  if (stockError) throw stockError;
 
   const nameById = new Map<string, string>((composantRows ?? []).map((row: any) => [row.id, String(row.name ?? "Inconnu")]));
-  const inById = new Map<string, number>((inRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)]));
-  const outById = new Map<string, number>((outRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)]));
+  const stockById = new Map<string, number>((stockRows ?? []).map((row: any) => [row.composant_id, Number(row.total_stock ?? 0)]));
 
   const components = composantIds.map((composantId) => {
     const needed = neededByComposant.get(composantId) ?? 0;
-    const available = (inById.get(composantId) ?? 0) - (outById.get(composantId) ?? 0);
+    const available = stockById.get(composantId) ?? 0;
     const missing = Math.max(0, needed - available);
 
     return {
