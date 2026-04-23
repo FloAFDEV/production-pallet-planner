@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,8 +21,30 @@ export const Route = createFileRoute("/")({
 function Dashboard() {
   const sb = supabase as any;
 
+  const downloadTextFile = (filename: string, content: string, mime = "text/plain;charset=utf-8") => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const toCsv = (rows: Array<Record<string, unknown>>) => {
+    if (rows.length === 0) return "";
+    const headers = Object.keys(rows[0]);
+    const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = [headers.join(";")];
+    for (const row of rows) {
+      lines.push(headers.map((h) => escape(row[h])).join(";"));
+    }
+    return lines.join("\n");
+  };
+
   const composants = useQuery({
     queryKey: ["composants"],
+    refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await sb.from("composants").select("*").order("reference");
       console.log("[dashboard] composants", { data, error });
@@ -33,6 +55,7 @@ function Dashboard() {
 
   const orders = useQuery({
     queryKey: ["production_orders", "active"],
+    refetchInterval: 10000,
     queryFn: async () => {
       const { data: ordersData, error } = await sb
         .from("production_orders")
@@ -67,6 +90,7 @@ function Dashboard() {
 
   const commercialOrders = useQuery({
     queryKey: ["orders", "open"],
+    refetchInterval: 15000,
     queryFn: async () => {
       const { data: ordersData, error } = await sb
         .from("orders")
@@ -112,6 +136,7 @@ function Dashboard() {
 
   const activeBomVersions = useQuery({
     queryKey: ["bom_versions", "active"],
+    refetchInterval: 30000,
     queryFn: async () => {
       const { data: versionsData, error } = await sb
         .from("bom_versions")
@@ -143,6 +168,19 @@ function Dashboard() {
     },
   });
 
+  const shipments = useQuery({
+    queryKey: ["shipments", "ready"],
+    refetchInterval: 10000,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("shipments")
+        .select("id,reference,status,client_id,created_at")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
+
   const totalStock = (composants.data ?? []).reduce((s: number, c: any) => s + Number(c.stock ?? 0), 0);
   const totalReserve = (composants.data ?? []).reduce((s: number, c: any) => s + Number(c.reserved_stock ?? 0), 0);
   const totalDisponible = totalStock - totalReserve;
@@ -153,6 +191,7 @@ function Dashboard() {
   const ordersList: any[] = (orders.data ?? []) as any[];
   const enCours = ordersList.filter((o) => normalizeProductionStatus(String(o.status)) === "in_progress");
   const prioritaires = ordersList.filter((o) => Number(o.priority ?? 0) === 1);
+  const shipmentsReady = ((shipments.data ?? []) as any[]).filter((s) => String(s.status ?? "") === "ready");
   const openCommercialOrders = ((commercialOrders.data ?? []) as any[]).filter((o) => !["done", "delivered", "canceled", "cancelled"].includes(String(o.status ?? "")));
 
   const componentDemandByOrder = new Map<string, number>();
@@ -193,15 +232,22 @@ function Dashboard() {
       <header className="mb-4 md:mb-5">
         <p className="text-xs uppercase tracking-widest text-muted-foreground">Vue d'ensemble</p>
         <h1 className="text-2xl md:text-3xl font-semibold mt-1">{UI.dashboard}</h1>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link to="/production" className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent">Lancer production</Link>
+          <Link to="/stock" className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent">Corriger stock</Link>
+          <Link to="/livraisons" className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent">Expédier</Link>
+          <a href="#exports-centre" className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent">Centre exports</a>
+        </div>
       </header>
 
       <div className="grid grid-cols-2 xl:grid-cols-5 gap-2 md:gap-3 mb-4">
-        <KPI icon={<Boxes className="h-4 w-4" />} label="Stock total (pièces)" value={fmtInt(totalStock)} />
-        <KPI icon={<Boxes className="h-4 w-4 text-info" />} label="Stock réservé" value={fmtInt(totalReserve)} />
-        <KPI icon={<Boxes className="h-4 w-4 text-success" />} label="Stock disponible" value={fmtInt(totalDisponible)} />
-        <KPI icon={<TrendingDown className="h-4 w-4 text-warning" />} label="Composants en alerte" value={String(alertes.length)} accent={alertes.length > 0 ? "warning" : undefined} />
-        <KPI icon={<Factory className="h-4 w-4 text-info" />} label={`${UI.production_orders} en cours`} value={String(enCours.length)} />
-        <KPI icon={<Flame className="h-4 w-4 text-destructive" />} label="OF urgents" value={String(prioritaires.length)} accent={prioritaires.length > 0 ? "destructive" : undefined} />
+        <KPI icon={<Boxes className="h-4 w-4" />} label="Stock total (pièces)" value={fmtInt(totalStock)} to="/stock" cta="Voir stock" />
+        <KPI icon={<Boxes className="h-4 w-4 text-info" />} label="Stock réservé" value={fmtInt(totalReserve)} to="/stock" cta="Réserver" />
+        <KPI icon={<Boxes className="h-4 w-4 text-success" />} label="Stock disponible" value={fmtInt(totalDisponible)} to="/stock" cta="Sortie" />
+        <KPI icon={<TrendingDown className="h-4 w-4 text-warning" />} label="Composants en alerte" value={String(alertes.length)} accent={alertes.length > 0 ? "warning" : undefined} to="/stock" cta="Corriger" />
+        <KPI icon={<Factory className="h-4 w-4 text-info" />} label={`${UI.production_orders} en cours`} value={String(enCours.length)} to="/production" cta="Reprendre" />
+        <KPI icon={<Flame className="h-4 w-4 text-destructive" />} label="OF urgents" value={String(prioritaires.length)} accent={prioritaires.length > 0 ? "destructive" : undefined} to="/production" cta="Traiter" />
+        <KPI icon={<TrendingDown className="h-4 w-4 text-info" />} label="Livraisons prêtes" value={String(shipmentsReady.length)} to="/livraisons" cta="Expédier" />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-3 mb-4">
@@ -214,7 +260,10 @@ function Dashboard() {
             {(openCommercialOrders.slice(0, 3) as any[]).map((o) => (
               <div key={o.id} className="py-1.5 flex items-center justify-between gap-2">
                 <span className="font-mono text-xs">{o.reference ?? o.id.slice(0, 8)}</span>
-                <span className="truncate">{o.client?.name ?? "Données manquantes"}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="truncate">{o.client?.name ?? "Données manquantes"}</span>
+                  <Link to="/production" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Produire</Link>
+                </div>
               </div>
             ))}
             {openCommercialOrders.length === 0 && <p>Aucune commande en attente.</p>}
@@ -243,6 +292,7 @@ function Dashboard() {
                       <div className="font-mono text-xs text-muted-foreground">besoin {fmtInt(c.demand)} / dispo {fmtInt(c.dispo)}</div>
                       <div className="font-mono font-semibold text-destructive">manque {fmtInt(Math.abs(c.projected))}</div>
                     </div>
+                    <Link to="/stock" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Corriger</Link>
                   </li>
                 ))}
               </ul>
@@ -276,6 +326,7 @@ function Dashboard() {
                       <div className="font-mono font-semibold text-destructive">{fmtInt(dispo)}</div>
                       <div className="text-[11px] text-muted-foreground">stock {fmtInt(c.stock)} · reserve {fmtInt(c.reserved_stock)}</div>
                     </div>
+                    <Link to="/stock" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Corriger</Link>
                   </li>
                   );
                 })}
@@ -305,6 +356,7 @@ function Dashboard() {
                     <div className="flex items-center gap-3">
                       <span className="font-mono text-sm">×{fmtInt(o.quantity)}</span>
                       <StatusBadge status={o.status} />
+                      <Link to="/production" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Reprendre</Link>
                     </div>
                   </li>
                 ))}
@@ -313,11 +365,44 @@ function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <Card id="exports-centre" className="mt-4">
+        <CardHeader className="flex-row items-center justify-between">
+          <CardTitle className="text-base">Centre exports</CardTitle>
+          <Badge variant="outline">Point d'accès unique</Badge>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <button
+            className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent"
+            onClick={() => downloadTextFile("atelier-export.csv", toCsv((composants.data ?? []) as any[]), "text/csv;charset=utf-8")}
+          >
+            Export CSV
+          </button>
+          <button
+            className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent"
+            onClick={() => downloadTextFile("atelier-export.pdf", JSON.stringify({ stocks: composants.data ?? [], production: orders.data ?? [], shipments: shipments.data ?? [] }, null, 2), "application/pdf")}
+          >
+            Export PDF
+          </button>
+          <button
+            className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent"
+            onClick={() => downloadTextFile("atelier-export.xls", toCsv((composants.data ?? []) as any[]), "application/vnd.ms-excel")}
+          >
+            Export Excel
+          </button>
+          <button
+            className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent"
+            onClick={() => downloadTextFile("atelier-export-comptable.csv", toCsv((shipments.data ?? []) as any[]), "text/csv;charset=utf-8")}
+          >
+            Export comptable
+          </button>
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
-function KPI({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent?: "warning" | "destructive" }) {
+function KPI({ icon, label, value, accent, to, cta }: { icon: React.ReactNode; label: string; value: string; accent?: "warning" | "destructive"; to?: "/" | "/stock" | "/production" | "/livraisons"; cta?: string }) {
   return (
     <Card className="overflow-hidden">
       <CardContent className="p-3">
@@ -328,6 +413,11 @@ function KPI({ icon, label, value, accent }: { icon: React.ReactNode; label: str
         <div className={"mt-1.5 text-xl md:text-2xl font-semibold tabular " + (accent === "destructive" ? "text-destructive" : accent === "warning" ? "text-warning" : "")}>
           {value}
         </div>
+        {to && cta && (
+          <Link to={to} className="mt-2 inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">
+            {cta}
+          </Link>
+        )}
       </CardContent>
     </Card>
   );

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtDate, fmtInt, fmtKg, fmtPalette } from "@/lib/format";
@@ -128,9 +128,6 @@ function LivraisonDetail() {
         >
           <ArrowLeft className="h-4 w-4" /> Retour
         </Link>
-        <Button variant="outline" onClick={() => window.print()}>
-          <Printer className="h-4 w-4" /> Imprimer
-        </Button>
       </div>
 
       <div className="rounded-lg border border-border bg-card">
@@ -234,9 +231,9 @@ function LivraisonDetail() {
       <div className="print:hidden mt-4 rounded-md border border-border p-4">
         <h2 className="text-sm font-semibold mb-3">Statut shipment</h2>
         <div className="flex flex-wrap gap-2 mb-3">
-          <Button variant="outline" disabled={!canSetReady || updateStatus.isPending} onClick={() => updateStatus.mutate("ready")}>Marquer prêt</Button>
-          <Button variant="outline" disabled={!canSetShipped || updateStatus.isPending} onClick={() => updateStatus.mutate("shipped")}>Marquer expédié</Button>
-          <Button variant="outline" disabled={!canSetDelivered || updateStatus.isPending} onClick={() => updateStatus.mutate("delivered")}>Marquer livré</Button>
+          <Button variant="outline" disabled={!canSetReady || updateStatus.isPending} onClick={() => updateStatus.mutate("ready")}>Préparer</Button>
+          <Button variant="outline" disabled={!canSetShipped || updateStatus.isPending} onClick={() => updateStatus.mutate("shipped")}>Charger</Button>
+          <Button variant="outline" disabled={!canSetDelivered || updateStatus.isPending} onClick={() => updateStatus.mutate("delivered")}>Expédier</Button>
         </div>
       </div>
     </div>

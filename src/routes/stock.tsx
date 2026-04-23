@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +25,10 @@ export const Route = createFileRoute("/stock")({
 
 function StockPage() {
   const sb = supabase as any;
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [presetComponentId, setPresetComponentId] = useState<string>("");
+  const [presetType, setPresetType] = useState<"IN" | "OUT">("IN");
+  const [presetReason, setPresetReason] = useState<string>("");
 
   const composants = useQuery({
     queryKey: ["composants"],
@@ -73,8 +77,21 @@ function StockPage() {
           <p className="text-xs uppercase tracking-widest text-muted-foreground">Inventaire</p>
           <h1 className="text-3xl md:text-4xl font-display font-semibold mt-1">Stock</h1>
         </div>
-        <MouvementDialog composants={composants.data ?? []} />
+        <div className="flex flex-wrap gap-2">
+          <Link to="/production" className="inline-flex items-center rounded-md border border-input px-3 py-2 text-sm hover:bg-accent">Réserver</Link>
+          <Button variant="outline" onClick={() => { setPresetComponentId(""); setPresetType("OUT"); setPresetReason("Sortie stock"); setDialogOpen(true); }}>Sortie</Button>
+          <Button onClick={() => { setPresetComponentId(""); setPresetType("IN"); setPresetReason("Correction stock"); setDialogOpen(true); }}>Corriger</Button>
+        </div>
       </header>
+
+      <MouvementDialog
+        composants={composants.data ?? []}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        presetComponentId={presetComponentId}
+        presetType={presetType}
+        presetReason={presetReason}
+      />
 
       <Tabs defaultValue="composants">
         <TabsList>
@@ -98,12 +115,13 @@ function StockPage() {
                       <th className="text-left p-3">Emplacement</th>
                       <th className="text-right p-3">Poids u.</th>
                       <th className="text-center p-3">État</th>
+                      <th className="text-right p-3">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(composants.data ?? []).length === 0 ? (
                       <tr>
-                        <td className="p-4 text-sm text-muted-foreground" colSpan={9}>Aucune donnée disponible</td>
+                        <td className="p-4 text-sm text-muted-foreground" colSpan={10}>Aucune donnée disponible</td>
                       </tr>
                     ) : (composants.data ?? []).map((c: any) => {
                       const reserve = Number(c.reserved_stock ?? 0);
@@ -128,6 +146,11 @@ function StockPage() {
                             ) : (
                               <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-success/15 text-success border border-success/30">OK</span>
                             )}
+                          </td>
+                          <td className="p-3 text-right">
+                            <Button size="sm" variant="outline" onClick={() => { setPresetComponentId(c.id); setPresetType("IN"); setPresetReason("Correction stock"); setDialogOpen(true); }}>
+                              Corriger
+                            </Button>
                           </td>
                         </tr>
                       );
@@ -155,12 +178,13 @@ function StockPage() {
                       <th className="text-left p-3">Motif</th>
                       <th className="text-left p-3">Référence</th>
                       <th className="text-left p-3">Auteur</th>
+                      <th className="text-right p-3">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(mouvements.data ?? []).length === 0 ? (
                       <tr>
-                        <td className="p-4 text-sm text-muted-foreground" colSpan={8}>Aucune donnée disponible</td>
+                        <td className="p-4 text-sm text-muted-foreground" colSpan={9}>Aucune donnée disponible</td>
                       </tr>
                     ) : (mouvements.data ?? []).map((m) => (
                       <tr key={m.id} className="border-t border-border">
@@ -193,6 +217,11 @@ function StockPage() {
                         <td className="p-3 text-muted-foreground">{m.reason ?? m.source_type ?? "—"}</td>
                         <td className="p-3 font-mono text-xs text-muted-foreground">{m.source_id ?? m.reference_id ?? "—"}</td>
                         <td className="p-3 text-xs text-muted-foreground">{m.created_by ?? "Système"}</td>
+                        <td className="p-3 text-right">
+                          <Button size="sm" variant="outline" onClick={() => { setPresetComponentId(m.composant_id); setPresetType("IN"); setPresetReason("Correction après mouvement"); setDialogOpen(true); }}>
+                            Corriger
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -206,13 +235,33 @@ function StockPage() {
   );
 }
 
-function MouvementDialog({ composants }: { composants: { id: string; reference: string; name: string }[] }) {
-  const [open, setOpen] = useState(false);
+function MouvementDialog({
+  composants,
+  open,
+  onOpenChange,
+  presetComponentId,
+  presetType,
+  presetReason,
+}: {
+  composants: { id: string; reference: string; name: string }[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  presetComponentId?: string;
+  presetType?: "IN" | "OUT";
+  presetReason?: string;
+}) {
   const [composantId, setComposantId] = useState<string>("");
   const [type, setType] = useState<"IN" | "OUT">("IN");
   const [qty, setQty] = useState<string>("");
   const [reason, setReason] = useState<string>("");
   const qc = useQueryClient();
+
+  useEffect(() => {
+    if (!open) return;
+    setComposantId(presetComponentId ?? "");
+    setType(presetType ?? "IN");
+    setReason(presetReason ?? "");
+  }, [open, presetComponentId, presetType, presetReason]);
 
   const mut = useMutation({
     mutationFn: async () => {
@@ -239,17 +288,14 @@ function MouvementDialog({ composants }: { composants: { id: string; reference: 
       toast.success("Mouvement enregistré");
       qc.invalidateQueries({ queryKey: ["composants"] });
       qc.invalidateQueries({ queryKey: ["stock_movements"] });
-      setOpen(false);
+      onOpenChange(false);
       setComposantId(""); setQty(""); setReason(""); setType("IN");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button><Plus className="h-4 w-4" /> Nouveau mouvement</Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader><DialogTitle>Entrée / sortie de stock</DialogTitle></DialogHeader>
         <p className="text-xs text-muted-foreground">Ecriture via RPC serveur uniquement. Aucune insertion directe front.</p>
@@ -289,7 +335,7 @@ function MouvementDialog({ composants }: { composants: { id: string; reference: 
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
           <Button onClick={() => mut.mutate()} disabled={mut.isPending}>Enregistrer</Button>
         </DialogFooter>
       </DialogContent>

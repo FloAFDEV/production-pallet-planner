@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Printer, Trash2, Truck } from "lucide-react";
+import { Plus, Trash2, Truck } from "lucide-react";
 import { fmtDate, fmtInt, fmtKg, fmtPalette } from "@/lib/format";
 import { livraisonStatusMeta, normalizeLivraisonStatus, type LivraisonStatus } from "@/lib/domain";
 import { UI } from "@/lib/uiLabels";
@@ -30,6 +30,18 @@ type ShipmentLineDraft = { product_variant_id: string; quantity: number };
 
 function LivraisonsPage() {
   const sb = supabase as any;
+  const qc = useQueryClient();
+
+  const transitionShipment = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: LivraisonStatus }) => {
+      const { error } = await sb.from("shipments").update({ status }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["shipments"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const commercialOrders = useQuery({
     queryKey: ["orders", "history"],
@@ -169,6 +181,9 @@ function LivraisonsPage() {
         )}
         {(shipments.data ?? []).map((s: any) => {
           const status = normalizeLivraisonStatus(s.status);
+          const canPrepare = status === "draft";
+          const canLoad = status === "ready";
+          const canShip = status === "shipped";
           return (
             <Card key={s.id}>
               <CardHeader className="flex-row items-start justify-between gap-3">
@@ -190,10 +205,15 @@ function LivraisonsPage() {
                   params={{ id: s.id }}
                   className="inline-flex items-center gap-1.5 text-sm rounded-md border border-input px-3 py-1.5 hover:bg-accent hover:text-accent-foreground"
                 >
-                  <Printer className="h-3.5 w-3.5" /> Détail
+                  Ouvrir
                 </Link>
               </CardHeader>
               <CardContent>
+                <div className="mb-2 flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" disabled={!canPrepare || transitionShipment.isPending} onClick={() => transitionShipment.mutate({ id: s.id, status: "ready" })}>Préparer</Button>
+                  <Button size="sm" variant="outline" disabled={!canLoad || transitionShipment.isPending} onClick={() => transitionShipment.mutate({ id: s.id, status: "shipped" })}>Charger</Button>
+                  <Button size="sm" variant="outline" disabled={!canShip || transitionShipment.isPending} onClick={() => transitionShipment.mutate({ id: s.id, status: "delivered" })}>Expédier</Button>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-[88px] md:top-0 z-10 bg-background text-xs uppercase tracking-wider text-muted-foreground">

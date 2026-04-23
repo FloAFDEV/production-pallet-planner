@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -213,6 +213,10 @@ function CoffretsPage() {
       <header className="mb-4">
         <p className="text-xs uppercase tracking-widest text-muted-foreground">Referentiel</p>
         <h1 className="text-2xl md:text-3xl font-semibold mt-1">Gestion des coffrets</h1>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link to="/production" className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent">Produire</Link>
+          <Link to="/production" className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent">Voir faisabilité</Link>
+        </div>
       </header>
 
       <div className="grid lg:grid-cols-4 gap-3">
