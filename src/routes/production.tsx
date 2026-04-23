@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { AlertCircle, CheckCircle2, Flame, PlayCircle, Sparkles } from "lucide-react";
 import { fmtInt, fmtKg, fmtPalette } from "@/lib/format";
 import { StatusBadge } from "./index";
@@ -35,7 +36,8 @@ function ProductionPage() {
   const [coffretId, setCoffretId] = useState<string>("");
   const [qty, setQty] = useState<string>("100");
   const [notes, setNotes] = useState<string>("");
-  const [newStatus, setNewStatus] = useState<ProductionStatus>("draft");
+  const [newStatus, setNewStatus] = useState<ProductionStatus>("brouillon");
+  const [priority, setPriority] = useState<0 | 1>(0);
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   // Hook pour vérifier la faisabilité
@@ -61,6 +63,7 @@ function ProductionPage() {
         coffret_id: coffretId,
         quantity,
         status: newStatus,
+        priority,
         notes: notes || undefined,
       });
       
@@ -77,7 +80,8 @@ function ProductionPage() {
       setCoffretId("");
       setQty("100");
       setNotes("");
-      setNewStatus("draft");
+      setNewStatus("brouillon");
+      setPriority(0);
     },
     onError: (e: Error) => {
       console.error("[createOrder] Error:", e);
@@ -109,14 +113,21 @@ function ProductionPage() {
 
   const setOrderStatus = useMutation({
     mutationFn: async ({ orderId, status }: { orderId: string; status: ProductionStatus }) => {
-      const payload: Record<string, unknown> = { status };
-      if (status === "in_progress") payload.started_at = new Date().toISOString();
-      if (status === "done") payload.finished_at = new Date().toISOString();
-      if (status === "paused") payload.updated_at = new Date().toISOString();
-      if (status === "canceled" || status === "cancelled") payload.updated_at = new Date().toISOString();
+      if (status === "annule") {
+        const { data, error } = await sb.rpc("cancel_production_order_with_unreserve", { p_order_id: orderId });
+        if (error) throw error;
+        const res = data as { success: boolean; error?: string };
+        if (!res.success) throw new Error(res.error || "Annulation impossible");
+        return;
+      }
 
-      const { error } = await sb.from("production_orders").update(payload).eq("id", orderId);
+      const { data, error } = await sb.rpc("transition_production_order_status", {
+        p_order_id: orderId,
+        p_status: status,
+      });
       if (error) throw error;
+      const res = data as { success: boolean; error?: string };
+      if (!res.success) throw new Error(res.error || "Transition impossible");
     },
     onSuccess: () => {
       toast.success("Statut de l'ordre mis a jour");
@@ -200,11 +211,18 @@ function ProductionPage() {
               <Select value={newStatus} onValueChange={(v) => setNewStatus(v as ProductionStatus)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="draft">Brouillon</SelectItem>
-                  <SelectItem value="in_progress">En cours</SelectItem>
-                  <SelectItem value="priority">Prioritaire</SelectItem>
+                  <SelectItem value="brouillon">Brouillon</SelectItem>
+                  <SelectItem value="pret">Pret</SelectItem>
+                  <SelectItem value="en_cours">En cours</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2">
+              <div>
+                <div className="text-sm font-medium">Urgent</div>
+                <div className="text-xs text-muted-foreground">Badge de priorite uniquement</div>
+              </div>
+              <Switch checked={priority === 1} onCheckedChange={(checked) => setPriority(checked ? 1 : 0)} />
             </div>
             <Button 
               className="w-full" 
@@ -243,12 +261,12 @@ function ProductionPage() {
               <div className="flex flex-wrap gap-2 text-xs">
                 {[
                   { key: "all", label: "Tous" },
-                  { key: "draft", label: "Brouillons" },
-                  { key: "in_progress", label: "En cours" },
-                  { key: "paused", label: "En pause" },
-                  { key: "priority", label: "Prioritaires" },
-                  { key: "done", label: "Termines" },
-                  { key: "canceled", label: "Annules" },
+                  { key: "brouillon", label: "Brouillons" },
+                  { key: "pret", label: "Prets" },
+                  { key: "en_cours", label: "En cours" },
+                  { key: "en_pause", label: "En pause" },
+                  { key: "termine", label: "Termines" },
+                  { key: "annule", label: "Annules" },
                 ].map((f) => (
                   <button
                     key={f.key}
@@ -287,43 +305,52 @@ function ProductionPage() {
                           <div className="text-xs text-muted-foreground font-mono">{o.coffret?.reference}</div>
                         </td>
                         <td className="p-3 text-right tabular font-semibold">{fmtInt(o.quantity)}</td>
-                        <td className="p-3 text-center"><StatusBadge status={o.status} /></td>
+                        <td className="p-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <StatusBadge status={o.status} />
+                            {Number(o.priority ?? 0) === 1 && (
+                              <span className="inline-flex items-center rounded-sm border border-destructive/30 bg-destructive/15 px-2 py-0.5 text-[11px] font-medium text-destructive">
+                                Urgent
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-3 text-right">
                           <div className="inline-flex gap-1.5">
-                            {o.status === "draft" && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "in_progress" })} disabled={setOrderStatus.isPending}>
-                                <PlayCircle className="h-3.5 w-3.5" /> Lancer
+                            {o.status === "brouillon" && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "pret" })} disabled={setOrderStatus.isPending}>
+                                <PlayCircle className="h-3.5 w-3.5" /> Mettre pret
                               </Button>
                             )}
-                            {(o.status === "in_progress" || o.status === "priority") && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "paused" })} disabled={setOrderStatus.isPending}>
+                            {o.status === "pret" && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "en_cours" })} disabled={setOrderStatus.isPending}>
+                                Démarrer
+                              </Button>
+                            )}
+                            {(o.status === "en_cours") && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "en_pause" })} disabled={setOrderStatus.isPending}>
                                 Pause
                               </Button>
                             )}
-                            {o.status === "paused" && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "in_progress" })} disabled={setOrderStatus.isPending}>
+                            {o.status === "en_pause" && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "en_cours" })} disabled={setOrderStatus.isPending}>
                                 Reprendre
                               </Button>
                             )}
-                            {(o.status === "draft" || o.status === "in_progress") && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "priority" })} disabled={setOrderStatus.isPending}>
-                                Prioriser
-                              </Button>
-                            )}
-                            {(o.status === "in_progress" || o.status === "priority" || o.status === "paused") && (
+                            {(o.status === "pret" || o.status === "en_cours" || o.status === "en_pause") && (
                               <Button size="sm" variant="outline" onClick={() => validateOrder.mutate(o.id)} disabled={validateOrder.isPending}>
                                 <CheckCircle2 className="h-3.5 w-3.5" /> Valider
                               </Button>
                             )}
-                            {(o.status === "draft" || o.status === "paused") && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "canceled" })} disabled={setOrderStatus.isPending}>
+                            {(o.status === "brouillon" || o.status === "en_pause") && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "annule" })} disabled={setOrderStatus.isPending}>
                                 Annuler
                               </Button>
                             )}
-                            {o.status === "done" && (
+                            {o.status === "termine" && (
                               <span className="text-xs text-success inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Termine</span>
                             )}
-                            {(o.status === "canceled" || o.status === "cancelled") && (
+                            {o.status === "annule" && (
                               <span className="text-xs text-muted-foreground inline-flex items-center gap-1">Annule</span>
                             )}
                           </div>
@@ -351,12 +378,12 @@ function ProductionPage() {
               <div className="flex flex-wrap gap-2 text-xs">
                 {[
                   { key: "all", label: "Tous" },
-                  { key: "draft", label: "Brouillons" },
-                  { key: "in_progress", label: "En cours" },
-                  { key: "paused", label: "En pause" },
-                  { key: "priority", label: "Prioritaires" },
-                  { key: "done", label: "Termines" },
-                  { key: "canceled", label: "Annules" },
+                  { key: "brouillon", label: "Brouillons" },
+                  { key: "pret", label: "Prets" },
+                  { key: "en_cours", label: "En cours" },
+                  { key: "en_pause", label: "En pause" },
+                  { key: "termine", label: "Termines" },
+                  { key: "annule", label: "Annules" },
                 ].map((f) => (
                   <button
                     key={f.key}
@@ -395,43 +422,52 @@ function ProductionPage() {
                           <div className="text-xs text-muted-foreground font-mono">{o.coffret?.reference}</div>
                         </td>
                         <td className="p-3 text-right tabular font-semibold">{fmtInt(o.quantity)}</td>
-                        <td className="p-3 text-center"><StatusBadge status={o.status} /></td>
+                        <td className="p-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <StatusBadge status={o.status} />
+                            {Number(o.priority ?? 0) === 1 && (
+                              <span className="inline-flex items-center rounded-sm border border-destructive/30 bg-destructive/15 px-2 py-0.5 text-[11px] font-medium text-destructive">
+                                Urgent
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-3 text-right">
                           <div className="inline-flex gap-1.5">
-                            {o.status === "draft" && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "in_progress" })} disabled={setOrderStatus.isPending}>
-                                <PlayCircle className="h-3.5 w-3.5" /> Lancer
+                            {o.status === "brouillon" && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "pret" })} disabled={setOrderStatus.isPending}>
+                                <PlayCircle className="h-3.5 w-3.5" /> Mettre pret
                               </Button>
                             )}
-                            {(o.status === "in_progress" || o.status === "priority") && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "paused" })} disabled={setOrderStatus.isPending}>
+                            {o.status === "pret" && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "en_cours" })} disabled={setOrderStatus.isPending}>
+                                Démarrer
+                              </Button>
+                            )}
+                            {(o.status === "en_cours") && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "en_pause" })} disabled={setOrderStatus.isPending}>
                                 Pause
                               </Button>
                             )}
-                            {o.status === "paused" && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "in_progress" })} disabled={setOrderStatus.isPending}>
+                            {o.status === "en_pause" && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "en_cours" })} disabled={setOrderStatus.isPending}>
                                 Reprendre
                               </Button>
                             )}
-                            {(o.status === "draft" || o.status === "in_progress") && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "priority" })} disabled={setOrderStatus.isPending}>
-                                Prioriser
-                              </Button>
-                            )}
-                            {(o.status === "in_progress" || o.status === "priority" || o.status === "paused") && (
+                            {(o.status === "pret" || o.status === "en_cours" || o.status === "en_pause") && (
                               <Button size="sm" variant="outline" onClick={() => validateOrder.mutate(o.id)} disabled={validateOrder.isPending}>
                                 <CheckCircle2 className="h-3.5 w-3.5" /> Valider
                               </Button>
                             )}
-                            {(o.status === "draft" || o.status === "paused") && (
-                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "canceled" })} disabled={setOrderStatus.isPending}>
+                            {(o.status === "brouillon" || o.status === "en_pause") && (
+                              <Button size="sm" variant="outline" onClick={() => setOrderStatus.mutate({ orderId: o.id, status: "annule" })} disabled={setOrderStatus.isPending}>
                                 Annuler
                               </Button>
                             )}
-                            {o.status === "done" && (
+                            {o.status === "termine" && (
                               <span className="text-xs text-success inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Termine</span>
                             )}
-                            {(o.status === "canceled" || o.status === "cancelled") && (
+                            {o.status === "annule" && (
                               <span className="text-xs text-muted-foreground inline-flex items-center gap-1">Annule</span>
                             )}
                           </div>

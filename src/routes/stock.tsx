@@ -36,10 +36,10 @@ function StockPage() {
   });
 
   const mouvements = useQuery({
-    queryKey: ["mouvements"],
+    queryKey: ["stock_movements"],
     queryFn: async () => {
       const { data, error } = await sb
-        .from("mouvements")
+        .from("stock_movements")
         .select("*, composant:composants(reference,name)")
         .order("created_at", { ascending: false })
         .limit(100);
@@ -83,7 +83,11 @@ function StockPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(composants.data ?? []).map((c: any) => {
+                    {(composants.data ?? []).length === 0 ? (
+                      <tr>
+                        <td className="p-4 text-sm text-muted-foreground" colSpan={9}>Aucune donnée disponible</td>
+                      </tr>
+                    ) : (composants.data ?? []).map((c: any) => {
                       const reserve = Number(c.reserved_stock ?? 0);
                       const stock = Number(c.stock ?? 0);
                       const disponible = stock - reserve;
@@ -136,7 +140,11 @@ function StockPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(mouvements.data ?? []).map((m) => (
+                    {(mouvements.data ?? []).length === 0 ? (
+                      <tr>
+                        <td className="p-4 text-sm text-muted-foreground" colSpan={8}>Aucune donnée disponible</td>
+                      </tr>
+                    ) : (mouvements.data ?? []).map((m) => (
                       <tr key={m.id} className="border-t border-border">
                         <td className="p-3 text-muted-foreground tabular text-xs">{fmtDateTime(m.created_at)}</td>
                         <td className="p-3">
@@ -204,32 +212,15 @@ function MouvementDialog({ composants }: { composants: { id: string; reference: 
       };
 
       // Backward-compatible RPC names while backend converges.
-      const rpcCandidates = [
-        "record_stock_movement",
-        "create_stock_movement",
-        "create_inventory_movement",
-      ];
-
-      let lastError: any = null;
-      for (const fn of rpcCandidates) {
-        const { error } = await sb.rpc(fn, payload);
-        if (!error) return;
-        if (error.code === "PGRST202" || String(error.message ?? "").toLowerCase().includes("function")) {
-          lastError = error;
-          continue;
-        }
-        throw error;
-      }
-
-      throw new Error(
-        `Aucune RPC mouvement disponible (${rpcCandidates.join(", ")}). Vérifier la fonction serveur de ledger.` +
-          (lastError ? ` (${lastError.message})` : "")
-      );
+      const { data, error } = await sb.rpc("record_stock_movement", payload);
+      if (error) throw error;
+      const res = data as { success: boolean; error?: string };
+      if (!res.success) throw new Error(res.error || "Mouvement impossible");
     },
     onSuccess: () => {
       toast.success("Mouvement enregistré");
       qc.invalidateQueries({ queryKey: ["composants"] });
-      qc.invalidateQueries({ queryKey: ["mouvements"] });
+      qc.invalidateQueries({ queryKey: ["stock_movements"] });
       setOpen(false);
       setComposantId(""); setQty(""); setReason(""); setType("IN");
     },

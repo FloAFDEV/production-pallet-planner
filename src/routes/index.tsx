@@ -37,7 +37,7 @@ function Dashboard() {
       const { data, error } = await sb
         .from("production_orders")
         .select("*, coffret:coffrets(reference,name)")
-        .in("status", ["in_progress", "priority", "draft", "planned"])
+        .in("status", ["brouillon", "pret", "en_cours", "en_pause"])
         .order("status", { ascending: false })
         .order("created_at", { ascending: false });
       console.log("[dashboard] production_orders(active)", { data, error });
@@ -81,9 +81,9 @@ function Dashboard() {
     return (c.is_active ?? true) && dispo <= Number(c.min_stock ?? 0);
   });
   const ordersList: any[] = (orders.data ?? []) as any[];
-  const enCours = ordersList.filter((o) => o.status === "in_progress");
-  const prioritaires = ordersList.filter((o) => o.status === "priority");
-  const openCommercialOrders = ((commercialOrders.data ?? []) as any[]).filter((o) => !["done", "delivered", "canceled", "cancelled"].includes(String(o.status ?? "")));
+  const enCours = ordersList.filter((o) => o.status === "en_cours");
+  const prioritaires = ordersList.filter((o) => Number(o.priority ?? 0) === 1);
+  const openCommercialOrders = ((commercialOrders.data ?? []) as any[]).filter((o) => !["done", "delivered", "canceled", "cancelled", "livre", "annule"].includes(String(o.status ?? "")));
 
   const componentDemandByOrder = new Map<string, number>();
   const bomByVariant = new Map<string, any>();
@@ -131,7 +131,7 @@ function Dashboard() {
         <KPI icon={<Boxes className="h-4 w-4 text-success" />} label="Stock disponible" value={fmtInt(totalDisponible)} />
         <KPI icon={<TrendingDown className="h-4 w-4 text-warning" />} label="Composants en alerte" value={String(alertes.length)} accent={alertes.length > 0 ? "warning" : undefined} />
         <KPI icon={<Factory className="h-4 w-4 text-info" />} label={`${UI.production_orders} en cours`} value={String(enCours.length)} />
-        <KPI icon={<Flame className="h-4 w-4 text-destructive" />} label="Ordres prioritaires" value={String(prioritaires.length)} accent={prioritaires.length > 0 ? "destructive" : undefined} />
+        <KPI icon={<Flame className="h-4 w-4 text-destructive" />} label="OF urgents" value={String(prioritaires.length)} accent={prioritaires.length > 0 ? "destructive" : undefined} />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-3 mb-4">

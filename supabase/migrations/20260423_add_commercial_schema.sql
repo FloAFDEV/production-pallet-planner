@@ -322,12 +322,4 @@ CREATE POLICY "open_all" ON public.orders FOR ALL USING (true) WITH CHECK (true)
 CREATE POLICY "open_all" ON public.order_lines FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "open_all" ON public.clients FOR ALL USING (true) WITH CHECK (true);
 
--- ============ 12. DATA: Sample clients for testing ============
-INSERT INTO public.clients (reference, name, address, city, postal_code, country)
-VALUES
-  ('CLI-001', 'Acme Corp', '123 Rue de la Paix', 'Paris', '75001', 'FR'),
-  ('CLI-002', 'Omega SAS', '456 Av. des Champs', 'Lyon', '69000', 'FR'),
-  ('CLI-003', 'Delta Industries', '789 Boulevard', 'Marseille', '13000', 'FR')
-ON CONFLICT DO NOTHING;
-
 COMMIT;

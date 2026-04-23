@@ -1,37 +1,42 @@
 export type ProductionStatus =
-  | "draft"
-  | "in_progress"
-  | "priority"
-  | "done"
-  | "planned"
-  | "blocked"
-  | "cancelled";
+  | "brouillon"
+  | "pret"
+  | "en_cours"
+  | "en_pause"
+  | "termine"
+  | "annule";
+
+export type ProductionPriority = 0 | 1;
 
 export type LivraisonStatus =
-  | "draft"
-  | "prepared"
-  | "loaded"
-  | "delivered"
-  | "cancelled";
+  | "brouillon"
+  | "pret"
+  | "expedie"
+  | "livre"
+  | "annule";
 
 export type ShipmentStatus = "draft" | "packing" | "packed" | "ready" | "shipped";
 
 export const productionStatusMeta: Record<string, { label: string; cls: string }> = {
-  draft: { label: "Brouillon", cls: "bg-muted text-muted-foreground" },
-  planned: { label: "Planifie", cls: "bg-muted text-muted-foreground border border-border" },
-  in_progress: { label: "En cours", cls: "bg-info/15 text-info border border-info/30" },
-  priority: { label: "Prioritaire", cls: "bg-destructive/15 text-destructive border border-destructive/30" },
-  blocked: { label: "Bloque", cls: "bg-warning/15 text-warning border border-warning/30" },
-  done: { label: "Termine", cls: "bg-success/15 text-success border border-success/30" },
-  cancelled: { label: "Annule", cls: "bg-muted text-muted-foreground border border-border" },
+  brouillon: { label: "Brouillon", cls: "bg-muted text-muted-foreground" },
+  pret: { label: "Pret", cls: "bg-info/15 text-info border border-info/30" },
+  en_cours: { label: "En cours", cls: "bg-info/15 text-info border border-info/30" },
+  en_pause: { label: "En pause", cls: "bg-warning/15 text-warning border border-warning/30" },
+  termine: { label: "Termine", cls: "bg-success/15 text-success border border-success/30" },
+  annule: { label: "Annule", cls: "bg-muted text-muted-foreground border border-border" },
+};
+
+export const productionPriorityMeta: Record<ProductionPriority, { label: string; cls: string }> = {
+  0: { label: "Normal", cls: "bg-muted text-muted-foreground border border-border" },
+  1: { label: "Urgent", cls: "bg-destructive/15 text-destructive border border-destructive/30" },
 };
 
 export const livraisonStatusMeta: Record<string, { label: string; cls: string }> = {
-  draft: { label: "Brouillon", cls: "bg-muted text-muted-foreground" },
-  prepared: { label: "Prepare", cls: "bg-info/15 text-info border border-info/30" },
-  loaded: { label: "Charge", cls: "bg-warning/15 text-warning border border-warning/30" },
-  delivered: { label: "Livre", cls: "bg-success/15 text-success border border-success/30" },
-  cancelled: { label: "Annule", cls: "bg-muted text-muted-foreground border border-border" },
+  brouillon: { label: "Brouillon", cls: "bg-muted text-muted-foreground" },
+  pret: { label: "Pret", cls: "bg-info/15 text-info border border-info/30" },
+  expedie: { label: "Expedie", cls: "bg-warning/15 text-warning border border-warning/30" },
+  livre: { label: "Livre", cls: "bg-success/15 text-success border border-success/30" },
+  annule: { label: "Annule", cls: "bg-muted text-muted-foreground border border-border" },
 };
 
 export const shipmentStatusMeta: Record<string, { label: string; cls: string }> = {

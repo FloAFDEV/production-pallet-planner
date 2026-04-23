@@ -52,12 +52,12 @@ export function ProductionFeasibilityDisplay({ feasibility, isLoading }: Props) 
             {ok ? (
               <>
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
-                <span className="text-green-700">Production possible ✓</span>
+                <span className="text-green-700">Fabrication possible ✓</span>
               </>
             ) : (
               <>
                 <AlertCircle className="h-5 w-5 text-red-600" />
-                <span className="text-red-700">Production impossible</span>
+                <span className="text-red-700">Fabrication impossible</span>
               </>
             )}
           </CardTitle>
@@ -93,8 +93,8 @@ export function ProductionFeasibilityDisplay({ feasibility, isLoading }: Props) 
             <div className="mt-4 pt-4 border-t">
               <Alert className="border-red-200 bg-red-100/50">
                 <AlertTriangle className="h-4 w-4 text-red-600" />
-                <AlertDescription className="text-red-800 ml-2">
-                  <strong>Blocage production:</strong>
+                  <AlertDescription className="text-red-800 ml-2">
+                  <strong>Blocage fabrication:</strong>
                   {blockers.length === 1
                     ? ` 1 composant manquant`
                     : ` ${blockers.length} composants manquants`}

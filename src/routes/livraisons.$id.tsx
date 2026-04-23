@@ -181,7 +181,7 @@ function LivraisonDetail() {
   const createShipment = useMutation({
     mutationFn: async () => {
       if (!data) throw new Error("BL introuvable");
-      if (["delivered", "cancelled"].includes(String(data.status ?? ""))) {
+      if (["livre", "annule"].includes(String(data.status ?? ""))) {
         throw new Error("BL fige: expedition non modifiable.");
       }
 
@@ -224,7 +224,7 @@ function LivraisonDetail() {
   const updateShipmentStatus = useMutation({
     mutationFn: async (status: ShipmentStatus) => {
       if (!shipment.data?.id) throw new Error("Expedition introuvable");
-      if (["delivered", "cancelled"].includes(String(data?.status ?? ""))) {
+      if (["livre", "annule"].includes(String(data?.status ?? ""))) {
         throw new Error("BL fige: expedition non modifiable.");
       }
 
@@ -291,7 +291,7 @@ function LivraisonDetail() {
   const addPalette = useMutation({
     mutationFn: async () => {
       if (!shipment.data?.id) throw new Error("Expedition introuvable");
-      if (["delivered", "cancelled"].includes(String(data?.status ?? ""))) {
+      if (["livre", "annule"].includes(String(data?.status ?? ""))) {
         throw new Error("BL fige: expedition non modifiable.");
       }
 
@@ -325,7 +325,7 @@ function LivraisonDetail() {
 
   const allocateLine = useMutation({
     mutationFn: async () => {
-      if (["delivered", "cancelled"].includes(String(data?.status ?? ""))) {
+      if (["livre", "annule"].includes(String(data?.status ?? ""))) {
         throw new Error("BL fige: expedition non modifiable.");
       }
       const qty = parseInt(allocQty, 10);
@@ -364,7 +364,7 @@ function LivraisonDetail() {
   const removeAllocatedLine = useMutation({
     mutationFn: async ({ palletLineId, palletId }: { palletLineId: string; palletId: string }) => {
       if (!shipment.data?.id) throw new Error("Expedition introuvable");
-      if (["delivered", "cancelled"].includes(String(data?.status ?? ""))) {
+      if (["livre", "annule"].includes(String(data?.status ?? ""))) {
         throw new Error("BL fige: expedition non modifiable.");
       }
       const allowed = shipmentStatus === "draft" || shipmentStatus === "packing";
@@ -395,17 +395,19 @@ function LivraisonDetail() {
   const updateLivraisonStatus = useMutation({
     mutationFn: async ({ status, reason }: { status: string; reason?: string }) => {
       if (!data) throw new Error("BL introuvable");
-      if (String(data.status ?? "") === "delivered" && status !== "cancelled") {
+      if (String(data.status ?? "") === "livre" && status !== "annule") {
         throw new Error("BL deja livre: correction via annulation tracee uniquement.");
       }
 
       await snapshotLivraison("before_status_change", reason);
 
-      const { error } = await sb
-        .from("livraisons")
-        .update({ status })
-        .eq("id", data.id);
+      const { data: rpcData, error } = await sb.rpc("transition_livraison_status", {
+        p_livraison_id: data.id,
+        p_status: status,
+      });
       if (error) throw error;
+      const res = rpcData as { success: boolean; error?: string };
+      if (!res.success) throw new Error(res.error || "Transition impossible");
 
       await sb.from("logs").insert({
         entity_type: "livraison",
@@ -430,7 +432,7 @@ function LivraisonDetail() {
   const isEditable = shipmentStatus === "draft";
   const isPacking = shipmentStatus === "packing" || shipmentStatus === "packed";
   const isReadonly = shipmentStatus === "shipped";
-  const isLivraisonLocked = ["delivered", "cancelled"].includes(String(data?.status ?? ""));
+  const isLivraisonLocked = ["livre", "annule"].includes(String(data?.status ?? ""));
 
   const remainingByLine = useMemo(() => {
     const map = new Map<string, number>();
@@ -503,12 +505,12 @@ function LivraisonDetail() {
           </div>
 
           <div className="mb-4 print:hidden flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => updateLivraisonStatus.mutate({ status: "prepared" })} disabled={isLivraisonLocked || updateLivraisonStatus.isPending}>Marquer prepare</Button>
-            <Button size="sm" variant="outline" onClick={() => updateLivraisonStatus.mutate({ status: "loaded" })} disabled={isLivraisonLocked || updateLivraisonStatus.isPending}>Marquer charge</Button>
-            <Button size="sm" variant="outline" onClick={() => updateLivraisonStatus.mutate({ status: "delivered" })} disabled={String(data.status ?? "") === "cancelled" || updateLivraisonStatus.isPending}>Valider livre</Button>
+            <Button size="sm" variant="outline" onClick={() => updateLivraisonStatus.mutate({ status: "pret" })} disabled={isLivraisonLocked || updateLivraisonStatus.isPending}>Marquer pret</Button>
+            <Button size="sm" variant="outline" onClick={() => updateLivraisonStatus.mutate({ status: "expedie" })} disabled={isLivraisonLocked || updateLivraisonStatus.isPending}>Marquer expedie</Button>
+            <Button size="sm" variant="outline" onClick={() => updateLivraisonStatus.mutate({ status: "livre" })} disabled={String(data.status ?? "") === "annule" || updateLivraisonStatus.isPending}>Valider livre</Button>
             <Button size="sm" variant="outline" onClick={() => {
               const reason = window.prompt("Motif d'annulation du BL");
-              if (reason && reason.trim()) updateLivraisonStatus.mutate({ status: "cancelled", reason });
+              if (reason && reason.trim()) updateLivraisonStatus.mutate({ status: "annule", reason });
             }} disabled={updateLivraisonStatus.isPending}>Annuler BL</Button>
           </div>
 

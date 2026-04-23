@@ -147,12 +147,12 @@ export function MultiCoffretSimulator({ coffrets }: Props) {
               {feasibility?.ok ? (
                 <>
                   <div className="w-3 h-3 bg-green-500 rounded-full" />
-                  <span className="text-green-700">Production possible</span>
+                  <span className="text-green-700">Fabrication possible</span>
                 </>
               ) : (
                 <>
                   <div className="w-3 h-3 bg-red-500 rounded-full" />
-                  <span className="text-red-700">Manques détectés</span>
+                  <span className="text-red-700">Fabrication impossible</span>
                 </>
               )}
             </CardTitle>

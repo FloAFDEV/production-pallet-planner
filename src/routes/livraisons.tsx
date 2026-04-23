@@ -78,7 +78,7 @@ function LivraisonsPage() {
         .select("reference,date,status,total_palette,total_poids,client_entity:clients(name),items:livraison_items(quantity,coffret:coffrets(reference,name))")
         .gte("date", start)
         .lte("date", end)
-        .eq("status", "delivered")
+        .eq("status", "livre")
         .order("date", { ascending: true });
       if (error) throw error;
 
@@ -108,7 +108,7 @@ function LivraisonsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `export_bl_delivered_${year}.csv`;
+      a.download = `export_bl_livre_${year}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -273,7 +273,7 @@ function ClientHistoryPanel({
     const ordersByClient = new Map<string, number>();
     for (const o of commercialOrders ?? []) {
       const status = String(o.status ?? "").toLowerCase();
-      if (["cancelled", "canceled"].includes(status)) continue;
+      if (status === "annule") continue;
       const key = o.client_id ?? o.client?.id;
       if (!key) continue;
       const current = ordersByClient.get(key) ?? 0;
@@ -437,7 +437,7 @@ function NewLivraisonDialog() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [clientId, setClientId] = useState("");
-  const [status, setStatus] = useState<LivraisonStatus>("draft");
+  const [status, setStatus] = useState<LivraisonStatus>("brouillon");
   const [adresse, setAdresse] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [lines, setLines] = useState<LineDraft[]>([{ coffret_id: "", quantity: 1 }]);
@@ -492,7 +492,7 @@ function NewLivraisonDialog() {
           client: selectedClient.name,
           adresse,
           date,
-          status: status || "draft",
+          status: status || "brouillon",
           total_palette: totals.palettes,
           total_poids: totals.poids,
         })
@@ -505,7 +505,7 @@ function NewLivraisonDialog() {
         entity_id: liv.id,
         action: "livraison_created",
         payload: {
-          status: status || "draft",
+          status: status || "brouillon",
           total_palette: totals.palettes,
           total_poids: totals.poids,
         },
@@ -528,7 +528,7 @@ function NewLivraisonDialog() {
       setOpen(false);
       setClientId("");
       setAdresse("");
-      setStatus("draft");
+      setStatus("brouillon");
       setLines([{ coffret_id: "", quantity: 1 }]);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -571,10 +571,10 @@ function NewLivraisonDialog() {
             <Select value={status} onValueChange={(v) => setStatus(v as LivraisonStatus)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="draft">Brouillon</SelectItem>
-                <SelectItem value="prepared">Preparee</SelectItem>
-                <SelectItem value="loaded">Chargee</SelectItem>
-                <SelectItem value="delivered">Livree</SelectItem>
+                <SelectItem value="brouillon">Brouillon</SelectItem>
+                <SelectItem value="pret">Pret</SelectItem>
+                <SelectItem value="expedie">Expedie</SelectItem>
+                <SelectItem value="livre">Livre</SelectItem>
               </SelectContent>
             </Select>
           </div>
