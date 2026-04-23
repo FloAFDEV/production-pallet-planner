@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowDown, ArrowUp, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { fmtDateTime, fmtInt, fmtKg } from "@/lib/format";
 import { record_stock_movement } from "@/lib/stockMovements";
 
@@ -21,10 +21,14 @@ export const Route = createFileRoute("/stock")({
       { name: "description", content: "Liste des composants, niveaux de stock et historique des mouvements." },
     ],
   }),
+  component: StockPage,
+});
+
+function StockPage() {
   const sb = supabase as any;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [presetComponentId, setPresetComponentId] = useState<string>("");
-  const [presetType, setPresetType] = useState<"IN" | "OUT">("IN");
+  const [presetType, setPresetType] = useState<"IN" | "OUT" | "ADJUST">("IN");
   const [presetReason, setPresetReason] = useState<string>("");
 
   const composants = useQuery({
@@ -32,7 +36,7 @@ export const Route = createFileRoute("/stock")({
     queryFn: async () => {
       const { data, error } = await sb.from("composants").select("*").order("reference");
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
   });
 
@@ -48,7 +52,9 @@ export const Route = createFileRoute("/stock")({
       if (stockError) throw stockError;
 
       return {
-        stockById: new Map<string, number>((stockRows ?? []).map((row: any) => [row.composant_id, Number(row.available_stock ?? 0)])),
+        stockById: new Map<string, number>(
+          ((stockRows ?? []) as any[]).map((row) => [row.composant_id, Number(row.available_stock ?? 0)])
+        ),
       };
     },
   });
@@ -63,16 +69,16 @@ export const Route = createFileRoute("/stock")({
         .limit(100);
       if (error) throw error;
 
-      const composantIds = Array.from(
+      const mouvementComposantIds = Array.from(
         new Set(((mouvementRows ?? []) as any[]).map((m) => m.composant_id).filter(Boolean))
       );
 
       let composantMap = new Map<string, any>();
-      if (composantIds.length > 0) {
+      if (mouvementComposantIds.length > 0) {
         const { data: composantsData, error: composantsError } = await sb
           .from("composants")
           .select("id,reference,name")
-          .in("id", composantIds);
+          .in("id", mouvementComposantIds);
         if (composantsError) throw composantsError;
         composantMap = new Map((composantsData ?? []).map((c: any) => [c.id, c]));
       }
@@ -279,7 +285,6 @@ function MouvementDialog({
 
   const mut = useMutation({
     mutationFn: async () => {
-      const sb = supabase as any;
       const quantity = parseInt(qty, 10);
       if (!composantId || !quantity || quantity <= 0) throw new Error("Composant et quantité requis");
 
@@ -294,9 +299,13 @@ function MouvementDialog({
     onSuccess: () => {
       toast.success("Mouvement enregistré");
       qc.invalidateQueries({ queryKey: ["composants"] });
+      qc.invalidateQueries({ queryKey: ["stock_snapshot"] });
       qc.invalidateQueries({ queryKey: ["stock_movements"] });
       onOpenChange(false);
-      setComposantId(""); setQty(""); setReason(""); setType("IN");
+      setComposantId("");
+      setQty("");
+      setReason("");
+      setType("IN");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -350,7 +359,3 @@ function MouvementDialog({
     </Dialog>
   );
 }
-function useMemo(arg0: () => any, arg1: any[]) {
-  throw new Error("Function not implemented.");
-}
-

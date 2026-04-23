@@ -283,7 +283,14 @@ function ClientHistoryPanel({
 
     for (const s of shipments) {
       const key = s.client_id ?? `unknown-${s.id}`;
-      const row = byClient.get(key) ?? {
+      const row: {
+        name: string;
+        deliveries: number;
+        totalWeight: number;
+        totalPallets: number;
+        totalUnits: number;
+        dates: Date[];
+      } = byClient.get(key) ?? {
         name: s.client_entity?.name ?? "Données manquantes",
         deliveries: 0,
         totalWeight: 0,
