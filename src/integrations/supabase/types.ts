@@ -284,6 +284,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      record_stock_movement: {
+        Args: {
+          p_composant_id: string
+          p_type: Database["public"]["Enums"]["mouvement_type"]
+          p_quantity: number
+          p_reason?: string | null
+          p_entity_type?: string | null
+          p_reference_id?: string | null
+        }
+        Returns: Json
+      }
       simulate_production: {
         Args: { p_coffret_id: string; p_quantity: number }
         Returns: Json
