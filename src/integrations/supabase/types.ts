@@ -290,10 +290,16 @@ export type Database = {
       }
       validate_production_order: { Args: { p_order_id: string }; Returns: Json }
     }
-    Enums: {
-      mouvement_type: "IN" | "OUT"
-      production_status: "draft" | "in_progress" | "done" | "priority"
-    }
+  Enums: {
+  mouvement_type: "IN" | "OUT"
+  production_status:
+    | "draft"
+    | "ready"
+    | "in_progress"
+    | "paused"
+    | "done"
+    | "cancelled"
+}
     CompositeTypes: {
       [_ in never]: never
     }
