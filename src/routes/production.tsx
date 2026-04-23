@@ -101,13 +101,31 @@ function ProductionPage() {
   const orders = useQuery({
     queryKey: ["production_orders", "all"],
     queryFn: async () => {
-      const { data, error } = await sb
+      const { data: ordersData, error } = await sb
         .from("production_orders")
-        .select("*, coffret:coffrets(reference,name,poids_coffret,nb_par_palette)")
+        .select("*")
         .order("status", { ascending: false })
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data;
+
+      const coffretIds = Array.from(
+        new Set(((ordersData ?? []) as any[]).map((o) => o.coffret_id).filter(Boolean))
+      );
+
+      let coffretMap = new Map<string, any>();
+      if (coffretIds.length > 0) {
+        const { data: coffretsData, error: coffretsError } = await sb
+          .from("coffrets")
+          .select("id,reference,name,poids_coffret,nb_par_palette")
+          .in("id", coffretIds);
+        if (coffretsError) throw coffretsError;
+        coffretMap = new Map((coffretsData ?? []).map((c: any) => [c.id, c]));
+      }
+
+      return ((ordersData ?? []) as any[]).map((o) => ({
+        ...o,
+        coffret: coffretMap.get(o.coffret_id) ?? null,
+      }));
     },
   });
 

@@ -38,13 +38,31 @@ function StockPage() {
   const mouvements = useQuery({
     queryKey: ["stock_movements"],
     queryFn: async () => {
-      const { data, error } = await sb
+      const { data: mouvementRows, error } = await sb
         .from("mouvements")
-        .select("*, composant:composants(reference,name)")
+        .select("*")
         .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
-      return data;
+
+      const composantIds = Array.from(
+        new Set(((mouvementRows ?? []) as any[]).map((m) => m.composant_id).filter(Boolean))
+      );
+
+      let composantMap = new Map<string, any>();
+      if (composantIds.length > 0) {
+        const { data: composantsData, error: composantsError } = await sb
+          .from("composants")
+          .select("id,reference,name")
+          .in("id", composantIds);
+        if (composantsError) throw composantsError;
+        composantMap = new Map((composantsData ?? []).map((c: any) => [c.id, c]));
+      }
+
+      return ((mouvementRows ?? []) as any[]).map((m) => ({
+        ...m,
+        composant: composantMap.get(m.composant_id) ?? null,
+      }));
     },
   });
 

@@ -34,42 +34,108 @@ function Dashboard() {
   const orders = useQuery({
     queryKey: ["production_orders", "active"],
     queryFn: async () => {
-      const { data, error } = await sb
+      const { data: ordersData, error } = await sb
         .from("production_orders")
-        .select("*, coffret:coffrets(reference,name)")
+        .select("*")
         .in("status", ["brouillon", "pret", "en_cours", "en_pause"])
         .order("status", { ascending: false })
         .order("created_at", { ascending: false });
-      console.log("[dashboard] production_orders(active)", { data, error });
+      console.log("[dashboard] production_orders(active)", { data: ordersData, error });
       if (error) throw error;
-      return data;
+
+      const coffretIds = Array.from(new Set(((ordersData ?? []) as any[]).map((o) => o.coffret_id).filter(Boolean)));
+      let coffretMap = new Map<string, any>();
+      if (coffretIds.length > 0) {
+        const { data: coffretsData, error: coffretsError } = await sb
+          .from("coffrets")
+          .select("id,reference,name")
+          .in("id", coffretIds);
+        if (coffretsError) throw coffretsError;
+        coffretMap = new Map((coffretsData ?? []).map((c: any) => [c.id, c]));
+      }
+
+      return ((ordersData ?? []) as any[]).map((o) => ({
+        ...o,
+        coffret: coffretMap.get(o.coffret_id) ?? null,
+      }));
     },
   });
 
   const commercialOrders = useQuery({
     queryKey: ["orders", "open"],
     queryFn: async () => {
-      const { data, error } = await sb
+      const { data: ordersData, error } = await sb
         .from("orders")
-        .select("id, reference, status, created_at, client:clients(name), lines:order_lines(quantity, product_variant_id, variant:product_variants(reference,name))")
+        .select("id, reference, status, created_at, client_id")
         .order("created_at", { ascending: false });
-      console.log("[dashboard] orders(open)", { data, error });
+      console.log("[dashboard] orders(open)", { data: ordersData, error });
       if (error) throw error;
-      return data;
+
+      const orderIds = ((ordersData ?? []) as any[]).map((o) => o.id);
+      const clientIds = Array.from(new Set(((ordersData ?? []) as any[]).map((o) => o.client_id).filter(Boolean)));
+
+      let clientMap = new Map<string, any>();
+      if (clientIds.length > 0) {
+        const { data: clientsData, error: clientsError } = await sb
+          .from("clients")
+          .select("id,name")
+          .in("id", clientIds);
+        if (clientsError) throw clientsError;
+        clientMap = new Map((clientsData ?? []).map((c: any) => [c.id, c]));
+      }
+
+      let linesByOrder = new Map<string, any[]>();
+      if (orderIds.length > 0) {
+        const { data: linesData, error: linesError } = await sb
+          .from("order_lines")
+          .select("id,order_id,quantity,product_variant_id")
+          .in("order_id", orderIds);
+        if (linesError) throw linesError;
+        for (const line of (linesData ?? []) as any[]) {
+          const current = linesByOrder.get(line.order_id) ?? [];
+          current.push(line);
+          linesByOrder.set(line.order_id, current);
+        }
+      }
+
+      return ((ordersData ?? []) as any[]).map((o) => ({
+        ...o,
+        client: clientMap.get(o.client_id) ?? null,
+        lines: linesByOrder.get(o.id) ?? [],
+      }));
     },
   });
 
   const activeBomVersions = useQuery({
     queryKey: ["bom_versions", "active"],
     queryFn: async () => {
-      const { data, error } = await sb
+      const { data: versionsData, error } = await sb
         .from("bom_versions")
-        .select("id, product_variant_id, version, is_active, lines:bom_lines(composant_id, quantity)")
+        .select("id, product_variant_id, version, is_active")
         .eq("is_active", true)
         .order("version", { ascending: false });
-      console.log("[dashboard] bom_versions(active)", { data, error });
+      console.log("[dashboard] bom_versions(active)", { data: versionsData, error });
       if (error) throw error;
-      return data;
+
+      const versionIds = ((versionsData ?? []) as any[]).map((v) => v.id);
+      let linesByVersion = new Map<string, any[]>();
+      if (versionIds.length > 0) {
+        const { data: linesData, error: linesError } = await sb
+          .from("bom_lines")
+          .select("id,bom_version_id,composant_id,quantity")
+          .in("bom_version_id", versionIds);
+        if (linesError) throw linesError;
+        for (const line of (linesData ?? []) as any[]) {
+          const current = linesByVersion.get(line.bom_version_id) ?? [];
+          current.push(line);
+          linesByVersion.set(line.bom_version_id, current);
+        }
+      }
+
+      return ((versionsData ?? []) as any[]).map((v) => ({
+        ...v,
+        lines: linesByVersion.get(v.id) ?? [],
+      }));
     },
   });
 
@@ -144,7 +210,7 @@ function Dashboard() {
             {(openCommercialOrders.slice(0, 3) as any[]).map((o) => (
               <div key={o.id} className="py-1.5 flex items-center justify-between gap-2">
                 <span className="font-mono text-xs">{o.reference ?? o.id.slice(0, 8)}</span>
-                <span className="truncate">{o.client?.name ?? "Client"}</span>
+                <span className="truncate">{o.client?.name ?? "Données manquantes"}</span>
               </div>
             ))}
             {openCommercialOrders.length === 0 && <p>Aucune commande en attente.</p>}

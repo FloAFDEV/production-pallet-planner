@@ -56,13 +56,31 @@ function CoffretsPage() {
     queryKey: ["nomenclatures", selectedId],
     enabled: Boolean(selectedId),
     queryFn: async () => {
-      const { data, error } = await sb
+      const { data: nomenclaturesData, error } = await sb
         .from("nomenclatures")
-        .select("id, quantity, composant_id, composant:composants(reference,name)")
+        .select("id, quantity, composant_id")
         .eq("coffret_id", selectedId)
         .order("created_at", { ascending: true });
       if (error) throw error;
-      return data as any[];
+
+      const composantIds = Array.from(
+        new Set(((nomenclaturesData ?? []) as any[]).map((n) => n.composant_id).filter(Boolean))
+      );
+
+      let composantMap = new Map<string, any>();
+      if (composantIds.length > 0) {
+        const { data: composantsData, error: composantsError } = await sb
+          .from("composants")
+          .select("id,reference,name")
+          .in("id", composantIds);
+        if (composantsError) throw composantsError;
+        composantMap = new Map((composantsData ?? []).map((c: any) => [c.id, c]));
+      }
+
+      return ((nomenclaturesData ?? []) as any[]).map((n) => ({
+        ...n,
+        composant: composantMap.get(n.composant_id) ?? null,
+      })) as any[];
     },
   });
 

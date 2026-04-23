@@ -32,12 +32,44 @@ function LivraisonsPage() {
   const commercialOrders = useQuery({
     queryKey: ["orders", "history"],
     queryFn: async () => {
-      const { data, error } = await sb
+      const { data: ordersData, error } = await sb
         .from("orders")
-        .select("id, created_at, status, client_id, client:clients(id,name), lines:order_lines(quantity, product_variant_id)")
+        .select("id, created_at, status, client_id")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data;
+
+      const orderIds = ((ordersData ?? []) as any[]).map((o) => o.id);
+      const clientIds = Array.from(new Set(((ordersData ?? []) as any[]).map((o) => o.client_id).filter(Boolean)));
+
+      let clientMap = new Map<string, any>();
+      if (clientIds.length > 0) {
+        const { data: clientsData, error: clientsError } = await sb
+          .from("clients")
+          .select("id,name")
+          .in("id", clientIds);
+        if (clientsError) throw clientsError;
+        clientMap = new Map((clientsData ?? []).map((c: any) => [c.id, c]));
+      }
+
+      let linesByOrder = new Map<string, any[]>();
+      if (orderIds.length > 0) {
+        const { data: linesData, error: linesError } = await sb
+          .from("order_lines")
+          .select("id,order_id,quantity,product_variant_id")
+          .in("order_id", orderIds);
+        if (linesError) throw linesError;
+        for (const line of (linesData ?? []) as any[]) {
+          const current = linesByOrder.get(line.order_id) ?? [];
+          current.push(line);
+          linesByOrder.set(line.order_id, current);
+        }
+      }
+
+      return ((ordersData ?? []) as any[]).map((o) => ({
+        ...o,
+        client: clientMap.get(o.client_id) ?? null,
+        lines: linesByOrder.get(o.id) ?? [],
+      }));
     },
   });
 
@@ -55,9 +87,37 @@ function LivraisonsPage() {
     queryFn: async () => {
       const { data: livraisonsData, error } = await sb
         .from("livraisons")
-        .select("*, items:livraison_items(*, coffret:coffrets(reference,name))")
+        .select("*")
         .order("date", { ascending: false });
       if (error) throw error;
+
+      const livraisonIds = ((livraisonsData ?? []) as any[]).map((liv) => liv.id);
+      const { data: itemsData, error: itemsError } = await sb
+        .from("livraison_items")
+        .select("id,livraison_id,coffret_id,quantity,palettes,poids")
+        .in("livraison_id", livraisonIds.length > 0 ? livraisonIds : ["00000000-0000-0000-0000-000000000000"]);
+      if (itemsError) throw itemsError;
+
+      const coffretIds = Array.from(new Set(((itemsData ?? []) as any[]).map((it) => it.coffret_id).filter(Boolean)));
+      let coffretMap = new Map<string, any>();
+      if (coffretIds.length > 0) {
+        const { data: coffretsData, error: coffretsError } = await sb
+          .from("coffrets")
+          .select("id,reference,name")
+          .in("id", coffretIds);
+        if (coffretsError) throw coffretsError;
+        coffretMap = new Map((coffretsData ?? []).map((c: any) => [c.id, c]));
+      }
+
+      const itemsByLivraison = new Map<string, any[]>();
+      for (const item of (itemsData ?? []) as any[]) {
+        const current = itemsByLivraison.get(item.livraison_id) ?? [];
+        current.push({
+          ...item,
+          coffret: coffretMap.get(item.coffret_id) ?? null,
+        });
+        itemsByLivraison.set(item.livraison_id, current);
+      }
 
       const clientIds = Array.from(
         new Set(((livraisonsData ?? []) as any[]).map((liv) => liv.client_id).filter(Boolean))
@@ -76,6 +136,7 @@ function LivraisonsPage() {
       return (livraisonsData ?? []).map((liv: any) => ({
         ...liv,
         client_entity: liv.client_id ? clientById.get(liv.client_id) ?? null : null,
+        items: itemsByLivraison.get(liv.id) ?? [],
       }));
     },
   });
@@ -110,7 +171,7 @@ function LivraisonsPage() {
             <CardHeader className="flex-row items-start justify-between gap-3">
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Truck className="h-4 w-4 text-info" /> {l.client_entity?.name ?? l.client ?? "Client"}
+                  <Truck className="h-4 w-4 text-info" /> {l.client_entity?.name ?? l.client ?? "Données manquantes"}
                 </CardTitle>
                 <div className="text-xs text-muted-foreground mt-1">
                   <span className="font-mono">{l.reference}</span> · {fmtDate(l.date)} · {l.adresse}
@@ -204,9 +265,9 @@ function ClientHistoryPanel({
     }
 
     for (const l of livraisons) {
-      const key = l.client_id ?? `legacy:${l.client ?? "Sans client"}`;
+      const key = l.client_id ?? `legacy:${l.client ?? "Données manquantes"}`;
       const row = byClient.get(key) ?? {
-        name: l.client_entity?.name ?? l.client ?? "Sans client",
+        name: l.client_entity?.name ?? l.client ?? "Données manquantes",
         deliveries: 0,
         totalWeight: 0,
         totalPallets: 0,
@@ -445,7 +506,6 @@ function NewLivraisonDialog() {
       const { data: liv, error: e1 } = await sb
         .from("livraisons")
         .insert({
-          client_id: clientId,
           client: selectedClient.name,
           adresse,
           date,
@@ -456,17 +516,6 @@ function NewLivraisonDialog() {
         .select("id")
         .single();
       if (e1) throw e1;
-
-      await sb.from("logs").insert({
-        entity_type: "livraison",
-        entity_id: liv.id,
-        action: "livraison_created",
-        payload: {
-          status: status || "brouillon",
-          total_palette: totals.palettes,
-          total_poids: totals.poids,
-        },
-      });
 
       const { error: e2 } = await sb.from("livraison_items").insert(
         totals.items.map((it) => ({
