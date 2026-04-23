@@ -8,6 +8,20 @@ import { fmtInt } from "@/lib/format";
 import { normalizeProductionStatus, productionStatusMeta } from "@/lib/domain";
 import { UI } from "@/lib/uiLabels";
 
+function isMissingRelationError(error: any): boolean {
+  if (!error) return false;
+  const code = String(error.code ?? "");
+  const message = String(error.message ?? "").toLowerCase();
+  const status = Number(error.status ?? 0);
+  return (
+    status === 404 ||
+    code === "42P01" ||
+    code === "PGRST205" ||
+    message.includes("could not find the table") ||
+    message.includes("relation")
+  );
+}
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -37,13 +51,17 @@ function Dashboard() {
       const { data: ordersData, error } = await sb
         .from("production_orders")
         .select("*")
-        .in("status", ["brouillon", "pret", "en_cours", "en_pause"])
         .order("status", { ascending: false })
         .order("created_at", { ascending: false });
       console.log("[dashboard] production_orders(active)", { data: ordersData, error });
       if (error) throw error;
 
-      const coffretIds = Array.from(new Set(((ordersData ?? []) as any[]).map((o) => o.coffret_id).filter(Boolean)));
+      const activeOrders = ((ordersData ?? []) as any[]).filter((o) => {
+        const status = normalizeProductionStatus(String(o.status));
+        return status === "draft" || status === "ready" || status === "in_progress" || status === "paused";
+      });
+
+      const coffretIds = Array.from(new Set(activeOrders.map((o) => o.coffret_id).filter(Boolean)));
       let coffretMap = new Map<string, any>();
       if (coffretIds.length > 0) {
         const { data: coffretsData, error: coffretsError } = await sb
@@ -54,7 +72,7 @@ function Dashboard() {
         coffretMap = new Map((coffretsData ?? []).map((c: any) => [c.id, c]));
       }
 
-      return ((ordersData ?? []) as any[]).map((o) => ({
+      return activeOrders.map((o) => ({
         ...o,
         coffret: coffretMap.get(o.coffret_id) ?? null,
       }));
@@ -69,7 +87,12 @@ function Dashboard() {
         .select("id, reference, status, created_at, client_id")
         .order("created_at", { ascending: false });
       console.log("[dashboard] orders(open)", { data: ordersData, error });
-      if (error) throw error;
+      if (error) {
+        if (isMissingRelationError(error)) {
+          return { rows: [] as any[], source: "none" as const };
+        }
+        throw error;
+      }
 
       const orderIds = ((ordersData ?? []) as any[]).map((o) => o.id);
       const clientIds = Array.from(new Set(((ordersData ?? []) as any[]).map((o) => o.client_id).filter(Boolean)));
@@ -98,11 +121,13 @@ function Dashboard() {
         }
       }
 
-      return ((ordersData ?? []) as any[]).map((o) => ({
+      const rows = ((ordersData ?? []) as any[]).map((o) => ({
         ...o,
         client: clientMap.get(o.client_id) ?? null,
         lines: linesByOrder.get(o.id) ?? [],
       }));
+
+      return { rows, source: "orders" as const };
     },
   });
 
@@ -115,7 +140,39 @@ function Dashboard() {
         .eq("is_active", true)
         .order("version", { ascending: false });
       console.log("[dashboard] bom_versions(active)", { data: versionsData, error });
-      if (error) throw error;
+      if (error) {
+        if (!isMissingRelationError(error)) throw error;
+
+        // Fallback réel DB: anciennes nomenclatures si bom_versions/bom_lines ne sont pas encore déployées.
+        const { data: legacyRows, error: legacyError } = await sb
+          .from("nomenclatures")
+          .select("id,coffret_id,composant_id,quantity")
+          .order("created_at", { ascending: true });
+
+        if (legacyError) throw legacyError;
+
+        const linesByCoffret = new Map<string, any[]>();
+        for (const row of (legacyRows ?? []) as any[]) {
+          const current = linesByCoffret.get(row.coffret_id) ?? [];
+          current.push({
+            id: row.id,
+            bom_version_id: `legacy-${row.coffret_id}`,
+            composant_id: row.composant_id,
+            quantity: row.quantity,
+          });
+          linesByCoffret.set(row.coffret_id, current);
+        }
+
+        const rows = Array.from(linesByCoffret.entries()).map(([coffretId, lines]) => ({
+          id: `legacy-${coffretId}`,
+          product_variant_id: coffretId,
+          version: 1,
+          is_active: true,
+          lines,
+        }));
+
+        return { rows, source: "nomenclatures" as const };
+      }
 
       const versionIds = ((versionsData ?? []) as any[]).map((v) => v.id);
       let linesByVersion = new Map<string, any[]>();
@@ -132,10 +189,12 @@ function Dashboard() {
         }
       }
 
-      return ((versionsData ?? []) as any[]).map((v) => ({
+      const rows = ((versionsData ?? []) as any[]).map((v) => ({
         ...v,
         lines: linesByVersion.get(v.id) ?? [],
       }));
+
+      return { rows, source: "bom_versions" as const };
     },
   });
 
@@ -147,13 +206,13 @@ function Dashboard() {
     return (c.is_active ?? true) && dispo <= Number(c.min_stock ?? 0);
   });
   const ordersList: any[] = (orders.data ?? []) as any[];
-  const enCours = ordersList.filter((o) => o.status === "en_cours");
+  const enCours = ordersList.filter((o) => normalizeProductionStatus(String(o.status)) === "in_progress");
   const prioritaires = ordersList.filter((o) => Number(o.priority ?? 0) === 1);
-  const openCommercialOrders = ((commercialOrders.data ?? []) as any[]).filter((o) => !["done", "delivered", "canceled", "cancelled", "livre", "annule"].includes(String(o.status ?? "")));
+  const openCommercialOrders = ((commercialOrders.data?.rows ?? []) as any[]).filter((o) => !["done", "delivered", "canceled", "cancelled", "livre", "annule"].includes(String(o.status ?? "")));
 
   const componentDemandByOrder = new Map<string, number>();
   const bomByVariant = new Map<string, any>();
-  for (const bom of (activeBomVersions.data ?? []) as any[]) {
+  for (const bom of (activeBomVersions.data?.rows ?? []) as any[]) {
     if (!bom.product_variant_id) continue;
     if (!bomByVariant.has(bom.product_variant_id)) {
       bomByVariant.set(bom.product_variant_id, bom);
@@ -189,6 +248,13 @@ function Dashboard() {
       <header className="mb-4 md:mb-5">
         <p className="text-xs uppercase tracking-widest text-muted-foreground">Vue d'ensemble</p>
         <h1 className="text-2xl md:text-3xl font-semibold mt-1">{UI.dashboard}</h1>
+        {(activeBomVersions.data?.source === "nomenclatures" || commercialOrders.data?.source === "none") && (
+          <p className="text-xs text-warning mt-1">
+            Source DB partielle: {activeBomVersions.data?.source === "nomenclatures" ? "BOM lue via nomenclatures" : ""}
+            {activeBomVersions.data?.source === "nomenclatures" && commercialOrders.data?.source === "none" ? " · " : ""}
+            {commercialOrders.data?.source === "none" ? "table orders absente" : ""}
+          </p>
+        )}
       </header>
 
       <div className="grid grid-cols-2 xl:grid-cols-5 gap-2 md:gap-3 mb-4">
