@@ -14,7 +14,7 @@ export const Route = createFileRoute("/coffrets")({
   head: () => ({
     meta: [
       { title: "Coffrets — Coffret ERP" },
-      { name: "description", content: "Edition des coffrets, nomenclatures et types de palettes." },
+      { name: "description", content: "Edition des coffrets et de leurs composants." },
     ],
   }),
   component: CoffretsPage,
@@ -52,30 +52,19 @@ function CoffretsPage() {
     },
   });
 
-  const nomenclatures = useQuery({
-    queryKey: ["bom_lines", selectedId],
+  const bomLines = useQuery({
+    queryKey: ["coffret_components", selectedId],
     enabled: Boolean(selectedId),
     queryFn: async () => {
-      const { data: activeVersion, error: versionError } = await sb
-        .from("bom_versions")
-        .select("id")
-        .eq("product_variant_id", selectedId)
-        .eq("is_active", true)
-        .order("version", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (versionError) throw versionError;
-      if (!activeVersion?.id) return [];
-
-      const { data: nomenclaturesData, error } = await sb
-        .from("bom_lines")
+      const { data: coffretComponentsData, error } = await sb
+        .from("coffret_components")
         .select("id, quantity, composant_id")
-        .eq("bom_version_id", activeVersion.id)
+        .eq("coffret_id", selectedId)
         .order("created_at", { ascending: true });
       if (error) throw error;
 
       const composantIds = Array.from(
-        new Set(((nomenclaturesData ?? []) as any[]).map((n) => n.composant_id).filter(Boolean))
+        new Set(((coffretComponentsData ?? []) as any[]).map((n) => n.composant_id).filter(Boolean))
       );
 
       let composantMap = new Map<string, any>();
@@ -88,7 +77,7 @@ function CoffretsPage() {
         composantMap = new Map((composantsData ?? []).map((c: any) => [c.id, c]));
       }
 
-      return ((nomenclaturesData ?? []) as any[]).map((n) => ({
+      return ((coffretComponentsData ?? []) as any[]).map((n) => ({
         ...n,
         composant: composantMap.get(n.composant_id) ?? null,
       })) as any[];
@@ -131,79 +120,47 @@ function CoffretsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const addNomenclature = useMutation({
+  const addBomLine = useMutation({
     mutationFn: async () => {
       if (!selectedId || !newCompId) throw new Error("Coffret et composant requis");
       const quantity = parseInt(newCompQty, 10);
       if (!quantity || quantity <= 0) throw new Error("Quantite invalide");
 
-      let bomVersionId: string | null = null;
-      const { data: activeVersion, error: activeVersionError } = await sb
-        .from("bom_versions")
-        .select("id")
-        .eq("product_variant_id", selectedId)
-        .eq("is_active", true)
-        .order("version", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (activeVersionError) throw activeVersionError;
-
-      if (activeVersion?.id) {
-        bomVersionId = activeVersion.id;
-      } else {
-        const { data: maxVersionRows, error: maxVersionError } = await sb
-          .from("bom_versions")
-          .select("version")
-          .eq("product_variant_id", selectedId)
-          .order("version", { ascending: false })
-          .limit(1);
-        if (maxVersionError) throw maxVersionError;
-        const nextVersion = Number((maxVersionRows ?? [])[0]?.version ?? 0) + 1;
-
-        const { data: createdVersion, error: createVersionError } = await sb
-          .from("bom_versions")
-          .insert({ product_variant_id: selectedId, version: nextVersion, is_active: true })
-          .select("id")
-          .single();
-        if (createVersionError) throw createVersionError;
-        bomVersionId = createdVersion.id;
-      }
-
-      const { error } = await sb.from("bom_lines").insert({
-        bom_version_id: bomVersionId,
+      const { error } = await sb.from("coffret_components").insert({
+        coffret_id: selectedId,
         composant_id: newCompId,
         quantity,
       });
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Ligne nomenclature ajoutee");
+      toast.success("Composant ajouté");
       setNewCompId("");
       setNewCompQty("1");
-      qc.invalidateQueries({ queryKey: ["bom_lines", selectedId] });
+      qc.invalidateQueries({ queryKey: ["coffret_components", selectedId] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const updateNomenclature = useMutation({
+  const updateBomLine = useMutation({
     mutationFn: async ({ id, quantity }: { id: string; quantity?: number }) => {
       const payload: Record<string, unknown> = {};
       if (quantity != null) payload.quantity = quantity;
-      const { error } = await sb.from("bom_lines").update(payload).eq("id", id);
+      const { error } = await sb.from("coffret_components").update(payload).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["bom_lines", selectedId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["coffret_components", selectedId] }),
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const deleteNomenclature = useMutation({
+  const deleteBomLine = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await sb.from("bom_lines").delete().eq("id", id);
+      const { error } = await sb.from("coffret_components").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Ligne nomenclature supprimee");
-      qc.invalidateQueries({ queryKey: ["bom_lines", selectedId] });
+      toast.success("Composant supprimé");
+      qc.invalidateQueries({ queryKey: ["coffret_components", selectedId] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -287,7 +244,7 @@ function CoffretsPage() {
                   <Label>Quantite</Label>
                   <Input type="number" min="1" value={newCompQty} onChange={(e) => setNewCompQty(e.target.value)} />
                 </div>
-                <Button onClick={() => addNomenclature.mutate()} disabled={addNomenclature.isPending || !selectedId}>Ajouter</Button>
+                <Button onClick={() => addBomLine.mutate()} disabled={addBomLine.isPending || !selectedId}>Ajouter</Button>
               </div>
 
               <div className="overflow-x-auto border border-border rounded-sm">
@@ -301,15 +258,15 @@ function CoffretsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(nomenclatures.data ?? []).map((n) => (
+                    {(bomLines.data ?? []).map((n) => (
                       <NomenclatureRow
                         key={n.id}
                         row={n}
-                        onSave={(quantity) => updateNomenclature.mutate({ id: n.id, quantity })}
-                        onDelete={() => deleteNomenclature.mutate(n.id)}
+                        onSave={(quantity) => updateBomLine.mutate({ id: n.id, quantity })}
+                        onDelete={() => deleteBomLine.mutate(n.id)}
                       />
                     ))}
-                    {(nomenclatures.data ?? []).length === 0 && (
+                    {(bomLines.data ?? []).length === 0 && (
                       <tr><td className="p-3 text-sm text-muted-foreground" colSpan={4}>Aucune ligne.</td></tr>
                     )}
                   </tbody>

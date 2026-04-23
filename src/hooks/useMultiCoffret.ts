@@ -38,7 +38,7 @@ export type MultiCoffretFeasibility = {
 
 /**
  * MULTI COFFRET FEASIBILITY (SAFE MODE)
- * Uses simulate_production per coffret (fallback safe architecture)
+ * Lecture unique: coffret_components + agrégats stock_movements
  */
 export function useMultiCoffretFeasibility(
   orders: MultiCoffretOrder[],
@@ -49,39 +49,96 @@ export function useMultiCoffretFeasibility(
     enabled: enabled && orders.length > 0,
     queryFn: async () => {
       try {
-        const results = [];
+        const coffretIds = Array.from(new Set(orders.map((order) => order.variantId).filter(Boolean)));
+        const { data: bomRows, error: bomError } = await (supabase as any)
+          .from("coffret_components")
+          .select("coffret_id, composant_id, quantity")
+          .in("coffret_id", coffretIds);
+        if (bomError) throw bomError;
 
-        for (const order of orders) {
-          const { data, error } = await supabase.rpc(
-            "simulate_production",
-            {
-              p_coffret_id: order.variantId,
-              p_quantity: order.quantity,
-            }
-          );
+        const composantIds = Array.from(
+          new Set(((bomRows ?? []) as any[]).map((row) => row.composant_id).filter(Boolean))
+        );
 
-          if (error) throw error;
+        const { data: inRows, error: inError } = await (supabase as any)
+          .from("stock_movements")
+          .select("composant_id,total:quantity.sum()")
+          .in("composant_id", composantIds)
+          .in("type", ["IN", "ADJUST"]);
+        if (inError) throw inError;
 
-          results.push({
-            order,
-            simulation: data,
-          });
+        const { data: outRows, error: outError } = await (supabase as any)
+          .from("stock_movements")
+          .select("composant_id,total:quantity.sum()")
+          .in("composant_id", composantIds)
+          .eq("type", "OUT");
+        if (outError) throw outError;
+
+        const { data: composantsRows, error: composantsError } = await (supabase as any)
+          .from("composants")
+          .select("id, reference, name, min_stock")
+          .in("id", composantIds);
+        if (composantsError) throw composantsError;
+
+        const bomByCoffret = new Map<string, any[]>();
+        for (const row of (bomRows ?? []) as any[]) {
+          const current = bomByCoffret.get(row.coffret_id) ?? [];
+          current.push(row);
+          bomByCoffret.set(row.coffret_id, current);
         }
 
-        // Aggregation simple côté front (SAFE)
-        const okCount = results.filter((r) => r.simulation?.ok).length;
-        const total = results.length;
+        const inById = new Map<string, number>((inRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)]));
+        const outById = new Map<string, number>((outRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)]));
+        const compById = new Map<string, any>((composantsRows ?? []).map((row: any) => [row.id, row]));
+
+        const neededByComposant = new Map<string, number>();
+        for (const order of orders) {
+          const bomLines = bomByCoffret.get(order.variantId) ?? [];
+          for (const line of bomLines) {
+            const current = neededByComposant.get(line.composant_id) ?? 0;
+            neededByComposant.set(line.composant_id, current + Number(line.quantity ?? 0) * Number(order.quantity ?? 0));
+          }
+        }
+
+        const components = Array.from(neededByComposant.entries()).map(([composant_id, needed]) => {
+          const comp = compById.get(composant_id);
+          const stock = (inById.get(composant_id) ?? 0) - (outById.get(composant_id) ?? 0);
+          const after_production = stock - needed;
+          const missing = Math.max(0, needed - stock);
+          const min_stock = Number(comp?.min_stock ?? 0);
+
+          const status: "OK" | "LOW" | "MISSING" =
+            missing > 0 ? "MISSING" : after_production <= min_stock ? "LOW" : "OK";
+
+          return {
+            composant_id,
+            reference: String(comp?.reference ?? ""),
+            name: String(comp?.name ?? ""),
+            stock,
+            reserved: 0,
+            available: stock,
+            needed,
+            missing,
+            after_production,
+            min_stock,
+            status,
+          };
+        });
+
+        const okCount = components.filter((c) => c.status === "OK").length;
+        const lowCount = components.filter((c) => c.status === "LOW").length;
+        const missingCount = components.filter((c) => c.status === "MISSING").length;
 
         return {
-          ok: okCount === total,
+          ok: missingCount === 0,
           orders,
           summary: {
-            total_components: 0,
+            total_components: components.length,
             ok_count: okCount,
-            low_count: 0,
-            missing_count: total - okCount,
+            low_count: lowCount,
+            missing_count: missingCount,
           },
-          components: [],
+          components,
         } as MultiCoffretFeasibility;
       } catch (error) {
         console.error("[MultiCoffretFeasibility]", error);
@@ -112,7 +169,7 @@ export function useCreateProductionOrderSafe() {
           status: params.status ?? "draft",
           priority: params.priority ?? 0,
           notes: params.notes ?? null,
-        })
+        } as any)
         .select()
         .single();
 

@@ -7,7 +7,6 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   checkProductionFeasibility,
-  type ProductionFeasibilityResult,
 } from "@/lib/productionLogic";
 
 /**
@@ -35,28 +34,48 @@ export function useProductionFeasibility(
     },
   });
 
-  const nomenclaturesQuery = useQuery({
-    queryKey: ["bom_lines", "feasibility", coffretId],
+  const bomQuery = useQuery({
+    queryKey: ["coffret_components", "feasibility", coffretId],
     enabled: !!coffretId,
     queryFn: async () => {
-      const { data: activeVersion, error: versionError } = await sb
-        .from("bom_versions")
-        .select("id")
-        .eq("product_variant_id", coffretId)
-        .eq("is_active", true)
-        .order("version", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (versionError) throw versionError;
-      if (!activeVersion?.id) return [];
-
       const { data, error } = await sb
-        .from("bom_lines")
+        .from("coffret_components")
         .select("id, quantity, composant_id")
-        .eq("bom_version_id", activeVersion.id)
+        .eq("coffret_id", coffretId)
         .order("created_at", { ascending: true });
       if (error) throw error;
       return data ?? [];
+    },
+  });
+
+  const stockQuery = useQuery({
+    queryKey: ["stock_movements", "feasibility", coffretId],
+    enabled: !!coffretId,
+    queryFn: async () => {
+      const lineIds = (bomQuery.data ?? []).map((line: any) => line.composant_id);
+      if (lineIds.length === 0) return [];
+
+      const { data: inRows, error: inError } = await sb
+        .from("stock_movements")
+        .select("composant_id,total:quantity.sum()")
+        .in("composant_id", lineIds)
+        .in("type", ["IN", "ADJUST"]);
+      if (inError) throw inError;
+
+      const { data: outRows, error: outError } = await sb
+        .from("stock_movements")
+        .select("composant_id,total:quantity.sum()")
+        .in("composant_id", lineIds)
+        .eq("type", "OUT");
+      if (outError) throw outError;
+
+      const inById = new Map<string, number>((inRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)]));
+      const outById = new Map<string, number>((outRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)]));
+
+      return lineIds.map((id: string) => ({
+        composant_id: id,
+        available: (inById.get(id) ?? 0) - (outById.get(id) ?? 0),
+      }));
     },
   });
 
@@ -64,12 +83,12 @@ export function useProductionFeasibility(
     queryKey: ["composants", "feasibility", coffretId],
     enabled: !!coffretId,
     queryFn: async () => {
-      const lineIds = (nomenclaturesQuery.data ?? []).map((line: any) => line.composant_id);
+      const lineIds = (bomQuery.data ?? []).map((line: any) => line.composant_id);
       if (lineIds.length === 0) return [];
 
       const { data, error } = await sb
         .from("composants")
-        .select("id, reference, name, stock, reserved_stock, min_stock")
+        .select("id, reference, name, min_stock")
         .in("id", lineIds);
       if (error) throw error;
       return data ?? [];
@@ -81,12 +100,16 @@ export function useProductionFeasibility(
       return null;
     }
 
-    const lines = nomenclaturesQuery.data ?? [];
+    const lines = bomQuery.data ?? [];
+    const availableById = new Map((stockQuery.data ?? []).map((row: any) => [row.composant_id, Number(row.available ?? 0)]));
     const compMap = new Map((composantsQuery.data ?? []).map((component: any) => [component.id, component]));
     const enrichedLines = lines.map((line: any) => ({
       id: line.id,
       quantity: line.quantity,
-      composant: compMap.get(line.composant_id),
+      composant: {
+        ...(compMap.get(line.composant_id) ?? {}),
+        stock: availableById.get(line.composant_id) ?? 0,
+      },
     }));
 
     if (enrichedLines.length === 0) {
@@ -108,12 +131,13 @@ export function useProductionFeasibility(
   })();
 
   return {
-    isLoading: coffretQuery.isLoading || nomenclaturesQuery.isLoading || composantsQuery.isLoading,
-    isError: coffretQuery.isError || nomenclaturesQuery.isError || composantsQuery.isError,
+    isLoading: coffretQuery.isLoading || bomQuery.isLoading || composantsQuery.isLoading || stockQuery.isLoading,
+    isError: coffretQuery.isError || bomQuery.isError || composantsQuery.isError || stockQuery.isError,
     error:
       coffretQuery.error ||
-      nomenclaturesQuery.error ||
+      bomQuery.error ||
       composantsQuery.error ||
+      stockQuery.error ||
       null,
     feasibility,
     variant: coffretQuery.data,

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
 import { fmtDateTime, fmtInt, fmtKg } from "@/lib/format";
+import { record_stock_movement } from "@/lib/stockMovements";
 
 export const Route = createFileRoute("/stock")({
   head: () => ({
@@ -36,6 +37,28 @@ function StockPage() {
       const { data, error } = await sb.from("composants").select("*").order("reference");
       if (error) throw error;
       return data;
+    },
+  });
+
+  const stockAgg = useQuery({
+    queryKey: ["stock_movements", "agg"],
+    queryFn: async () => {
+      const { data: inRows, error: inError } = await sb
+        .from("stock_movements")
+        .select("composant_id,total:quantity.sum()")
+        .in("type", ["IN", "ADJUST"]);
+      if (inError) throw inError;
+
+      const { data: outRows, error: outError } = await sb
+        .from("stock_movements")
+        .select("composant_id,total:quantity.sum()")
+        .eq("type", "OUT");
+      if (outError) throw outError;
+
+      return {
+        inById: new Map<string, number>((inRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)])),
+        outById: new Map<string, number>((outRows ?? []).map((row: any) => [row.composant_id, Number(row.total ?? 0)])),
+      };
     },
   });
 
@@ -124,9 +147,9 @@ function StockPage() {
                         <td className="p-4 text-sm text-muted-foreground" colSpan={10}>Aucune donnée disponible</td>
                       </tr>
                     ) : (composants.data ?? []).map((c: any) => {
-                      const reserve = Number(c.reserved_stock ?? 0);
-                      const stock = Number(c.stock ?? 0);
-                      const disponible = stock - reserve;
+                      const stock = (stockAgg.data?.inById.get(c.id) ?? 0) - (stockAgg.data?.outById.get(c.id) ?? 0);
+                      const reserve = 0;
+                      const disponible = stock;
                       const alerte = (c.is_active ?? true) && disponible <= Number(c.min_stock ?? 0);
                       return (
                         <tr key={c.id} className="border-t border-border">
@@ -247,11 +270,11 @@ function MouvementDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   presetComponentId?: string;
-  presetType?: "IN" | "OUT";
+  presetType?: "IN" | "OUT" | "ADJUST";
   presetReason?: string;
 }) {
   const [composantId, setComposantId] = useState<string>("");
-  const [type, setType] = useState<"IN" | "OUT">("IN");
+  const [type, setType] = useState<"IN" | "OUT" | "ADJUST">("IN");
   const [qty, setQty] = useState<string>("");
   const [reason, setReason] = useState<string>("");
   const qc = useQueryClient();
@@ -269,20 +292,13 @@ function MouvementDialog({
       const quantity = parseInt(qty, 10);
       if (!composantId || !quantity || quantity <= 0) throw new Error("Composant et quantité requis");
 
-      const payload = {
-        p_composant_id: composantId,
-        p_type: type,
-        p_quantity: quantity,
-        p_reason: reason || null,
-        p_entity_type: "manual_fix",
-        p_reference_id: null,
-      };
-
-      // Backward-compatible RPC names while backend converges.
-      const { data, error } = await sb.rpc("record_stock_movement", payload);
-      if (error) throw error;
-      const res = data as { success: boolean; error?: string };
-      if (!res.success) throw new Error(res.error || "Mouvement impossible");
+      await record_stock_movement({
+        composant_id: composantId,
+        type,
+        quantity,
+        source_type: "manual_fix",
+        source_id: null,
+      });
     },
     onSuccess: () => {
       toast.success("Mouvement enregistré");
@@ -316,11 +332,12 @@ function MouvementDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Type</Label>
-              <Select value={type} onValueChange={(v) => setType(v as "IN" | "OUT")}>
+              <Select value={type} onValueChange={(v) => setType(v as "IN" | "OUT" | "ADJUST")}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="IN">Entrée</SelectItem>
                   <SelectItem value="OUT">Sortie</SelectItem>
+                  <SelectItem value="ADJUST">Ajustement</SelectItem>
                 </SelectContent>
               </Select>
             </div>

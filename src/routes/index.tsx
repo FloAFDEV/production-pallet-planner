@@ -46,10 +46,33 @@ function Dashboard() {
     queryKey: ["composants"],
     refetchInterval: 15000,
     queryFn: async () => {
-      const { data, error } = await sb.from("composants").select("*").order("reference");
+      const { data, error } = await sb.from("composants").select("id,reference,name,min_stock,is_active").order("reference");
       console.log("[dashboard] composants", { data, error });
       if (error) throw error;
       return data;
+    },
+  });
+
+  const stockAgg = useQuery({
+    queryKey: ["stock_movements", "agg"],
+    refetchInterval: 10000,
+    queryFn: async () => {
+      const { data: inRows, error: inError } = await sb
+        .from("stock_movements")
+        .select("composant_id,total:quantity.sum()")
+        .in("type", ["IN", "ADJUST"]);
+      if (inError) throw inError;
+
+      const { data: outRows, error: outError } = await sb
+        .from("stock_movements")
+        .select("composant_id,total:quantity.sum()")
+        .eq("type", "OUT");
+      if (outError) throw outError;
+
+      return {
+        inRows: (inRows ?? []) as any[],
+        outRows: (outRows ?? []) as any[],
+      };
     },
   });
 
@@ -134,37 +157,15 @@ function Dashboard() {
     },
   });
 
-  const activeBomVersions = useQuery({
-    queryKey: ["bom_versions", "active"],
+  const activeBoms = useQuery({
+    queryKey: ["coffret_components", "active"],
     refetchInterval: 30000,
     queryFn: async () => {
-      const { data: versionsData, error } = await sb
-        .from("bom_versions")
-        .select("id, product_variant_id, version, is_active")
-        .eq("is_active", true)
-        .order("version", { ascending: false });
-      console.log("[dashboard] bom_versions(active)", { data: versionsData, error });
+      const { data, error } = await sb
+        .from("coffret_components")
+        .select("coffret_id,composant_id,quantity");
       if (error) throw error;
-
-      const versionIds = ((versionsData ?? []) as any[]).map((v) => v.id);
-      let linesByVersion = new Map<string, any[]>();
-      if (versionIds.length > 0) {
-        const { data: linesData, error: linesError } = await sb
-          .from("bom_lines")
-          .select("id,bom_version_id,composant_id,quantity")
-          .in("bom_version_id", versionIds);
-        if (linesError) throw linesError;
-        for (const line of (linesData ?? []) as any[]) {
-          const current = linesByVersion.get(line.bom_version_id) ?? [];
-          current.push(line);
-          linesByVersion.set(line.bom_version_id, current);
-        }
-      }
-
-      return ((versionsData ?? []) as any[]).map((v) => ({
-        ...v,
-        lines: linesByVersion.get(v.id) ?? [],
-      }));
+      return (data ?? []) as any[];
     },
   });
 
@@ -181,11 +182,19 @@ function Dashboard() {
     },
   });
 
-  const totalStock = (composants.data ?? []).reduce((s: number, c: any) => s + Number(c.stock ?? 0), 0);
-  const totalReserve = (composants.data ?? []).reduce((s: number, c: any) => s + Number(c.reserved_stock ?? 0), 0);
-  const totalDisponible = totalStock - totalReserve;
+  const inById = new Map<string, number>(((stockAgg.data?.inRows ?? []) as any[]).map((r: any) => [r.composant_id, Number(r.total ?? 0)]));
+  const outById = new Map<string, number>(((stockAgg.data?.outRows ?? []) as any[]).map((r: any) => [r.composant_id, Number(r.total ?? 0)]));
+
+  const composantsWithStock = ((composants.data ?? []) as any[]).map((c: any) => {
+    const stock = (inById.get(c.id) ?? 0) - (outById.get(c.id) ?? 0);
+    return { ...c, stock };
+  });
+
+  const totalStock = composantsWithStock.reduce((s: number, c: any) => s + Number(c.stock ?? 0), 0);
+  const totalReserve = 0;
+  const totalDisponible = totalStock;
   const alertes = (composants.data ?? []).filter((c: any) => {
-    const dispo = Number(c.stock ?? 0) - Number(c.reserved_stock ?? 0);
+    const dispo = Number(((composantsWithStock.find((row: any) => row.id === c.id) ?? {}).stock ?? 0));
     return (c.is_active ?? true) && dispo <= Number(c.min_stock ?? 0);
   });
   const ordersList: any[] = (orders.data ?? []) as any[];
@@ -195,19 +204,18 @@ function Dashboard() {
   const openCommercialOrders = ((commercialOrders.data ?? []) as any[]).filter((o) => !["done", "delivered", "canceled", "cancelled"].includes(String(o.status ?? "")));
 
   const componentDemandByOrder = new Map<string, number>();
-  const bomByVariant = new Map<string, any>();
-  for (const bom of (activeBomVersions.data ?? []) as any[]) {
-    if (!bom.product_variant_id) continue;
-    if (!bomByVariant.has(bom.product_variant_id)) {
-      bomByVariant.set(bom.product_variant_id, bom);
-    }
+  const bomByCoffret = new Map<string, any[]>();
+  for (const line of (activeBoms.data ?? []) as any[]) {
+    const current = bomByCoffret.get(line.coffret_id) ?? [];
+    current.push(line);
+    bomByCoffret.set(line.coffret_id, current);
   }
 
   for (const order of openCommercialOrders) {
     for (const line of (order.lines ?? []) as any[]) {
-      const bom = bomByVariant.get(line.product_variant_id);
+      const bom = bomByCoffret.get(line.product_variant_id);
       if (!bom) continue;
-      for (const bomLine of (bom.lines ?? []) as any[]) {
+      for (const bomLine of bom) {
         const current = componentDemandByOrder.get(bomLine.composant_id) ?? 0;
         componentDemandByOrder.set(
           bomLine.composant_id,
@@ -217,10 +225,10 @@ function Dashboard() {
     }
   }
 
-  const projectedRuptures = ((composants.data ?? []) as any[])
+  const projectedRuptures = composantsWithStock
     .map((c) => {
       const demand = componentDemandByOrder.get(c.id) ?? 0;
-      const dispo = Number(c.stock ?? 0) - Number(c.reserved_stock ?? 0);
+      const dispo = Number(c.stock ?? 0);
       const projected = dispo - demand;
       return { ...c, demand, dispo, projected };
     })
@@ -315,7 +323,7 @@ function Dashboard() {
             ) : (
               <ul className="divide-y divide-border">
                 {alertes.map((c: any) => {
-                  const dispo = Number(c.stock ?? 0) - Number(c.reserved_stock ?? 0);
+                  const dispo = Number(((composantsWithStock.find((row: any) => row.id === c.id) ?? {}).stock ?? 0));
                   return (
                   <li key={c.id} className="py-2.5 flex items-center justify-between text-sm">
                     <div>
@@ -324,7 +332,7 @@ function Dashboard() {
                     </div>
                     <div className="text-right">
                       <div className="font-mono font-semibold text-destructive">{fmtInt(dispo)}</div>
-                      <div className="text-[11px] text-muted-foreground">stock {fmtInt(c.stock)} · reserve {fmtInt(c.reserved_stock)}</div>
+                      <div className="text-[11px] text-muted-foreground">stock {fmtInt(dispo)}</div>
                     </div>
                     <Link to="/stock" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Corriger</Link>
                   </li>
