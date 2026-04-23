@@ -5,6 +5,7 @@
 
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getStockSnapshotByComponents } from "@/lib/stockSnapshot";
 
 export type MultiCoffretOrder = {
   id: string;
@@ -38,7 +39,7 @@ export type MultiCoffretFeasibility = {
 
 /**
  * MULTI COFFRET FEASIBILITY (SAFE MODE)
- * Lecture unique: coffret_components + agrégats stock_movements
+ * Lecture unique: coffret_components + snapshot stock PostgreSQL
  */
 export function useMultiCoffretFeasibility(
   orders: MultiCoffretOrder[],
@@ -60,11 +61,7 @@ export function useMultiCoffretFeasibility(
           new Set(((bomRows ?? []) as any[]).map((row) => row.composant_id).filter(Boolean))
         );
 
-        const { data: stockRows, error: stockError } = await (supabase as any)
-          .from("stock_by_composant")
-          .select("composant_id,total_stock")
-          .in("composant_id", composantIds);
-        if (stockError) throw stockError;
+        const stockRows = await getStockSnapshotByComponents(composantIds);
 
         const { data: composantsRows, error: composantsError } = await (supabase as any)
           .from("composants")
@@ -79,7 +76,7 @@ export function useMultiCoffretFeasibility(
           bomByCoffret.set(row.coffret_id, current);
         }
 
-        const stockById = new Map<string, number>((stockRows ?? []).map((row: any) => [row.composant_id, Number(row.total_stock ?? 0)]));
+        const stockById = new Map<string, number>((stockRows ?? []).map((row) => [row.composant_id, Number(row.available_stock ?? 0)]));
         const compById = new Map<string, any>((composantsRows ?? []).map((row: any) => [row.id, row]));
 
         const neededByComposant = new Map<string, number>();

@@ -284,6 +284,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_stock_snapshot_by_components: {
+        Args: { component_ids: string[] }
+        Returns: { composant_id: string; available_stock: number }[]
+      }
       record_stock_movement: {
         Args: {
           p_composant_id: string

@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
 import { fmtDateTime, fmtInt, fmtKg } from "@/lib/format";
 import { record_stock_movement } from "@/lib/stockMovements";
+import { getStockSnapshotByComponents } from "@/lib/stockSnapshot";
 
 export const Route = createFileRoute("/stock")({
   head: () => ({
@@ -40,16 +41,16 @@ function StockPage() {
     },
   });
 
+  const composantIds = useMemo(() => (composants.data ?? []).map((c: any) => c.id), [composants.data]);
+
   const stockAgg = useQuery({
-    queryKey: ["stock_movements", "agg"],
+    queryKey: ["stock_snapshot", composantIds],
+    enabled: composantIds.length > 0,
     queryFn: async () => {
-      const { data: stockRows, error: stockError } = await sb
-        .from("stock_by_composant")
-        .select("composant_id,total_stock");
-      if (stockError) throw stockError;
+      const stockRows = await getStockSnapshotByComponents(composantIds);
 
       return {
-        stockById: new Map<string, number>((stockRows ?? []).map((row: any) => [row.composant_id, Number(row.total_stock ?? 0)])),
+        stockById: new Map<string, number>((stockRows ?? []).map((row) => [row.composant_id, Number(row.available_stock ?? 0)])),
       };
     },
   });
@@ -139,15 +140,15 @@ function StockPage() {
                         <td className="p-4 text-sm text-muted-foreground" colSpan={10}>Aucune donnée disponible</td>
                       </tr>
                     ) : (composants.data ?? []).map((c: any) => {
-                      const stock = stockAgg.data?.stockById.get(c.id) ?? 0;
-                      const reserve = 0;
-                      const disponible = stock;
+                      const stockBrut = Number(c.stock ?? 0);
+                      const disponible = stockAgg.data?.stockById.get(c.id) ?? stockBrut;
+                      const reserve = Math.max(0, stockBrut - disponible);
                       const alerte = (c.is_active ?? true) && disponible <= Number(c.min_stock ?? 0);
                       return (
                         <tr key={c.id} className="border-t border-border">
                           <td className="p-3 font-mono text-xs">{c.reference}</td>
                           <td className="p-3 font-medium">{c.name}</td>
-                          <td className="p-3 text-right tabular">{fmtInt(stock)}</td>
+                          <td className="p-3 text-right tabular">{fmtInt(stockBrut)}</td>
                           <td className="p-3 text-right tabular text-info">{fmtInt(reserve)}</td>
                           <td className={"p-3 text-right tabular font-semibold " + (alerte ? "text-destructive" : "")}>{fmtInt(disponible)}</td>
                           <td className="p-3 text-right tabular text-muted-foreground">{fmtInt(c.min_stock)}</td>

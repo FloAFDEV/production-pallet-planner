@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtDate, fmtInt, fmtKg, fmtPalette } from "@/lib/format";
-import { livraisonStatusMeta, normalizeLivraisonStatus, type LivraisonStatus } from "@/lib/domain";
+import { livraisonStatusMeta, type LivraisonStatus } from "@/lib/domain";
 import { UI } from "@/lib/uiLabels";
 import { Button } from "@/components/ui/button";
 import agecetLogo from "@/assets/logo_agecet_hands.jpg";
@@ -96,7 +96,7 @@ function LivraisonDetail() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const status = normalizeLivraisonStatus(data?.status);
+  const status = String(data?.status ?? "");
   const canSetReady = status === "draft";
   const canSetShipped = status === "ready";
   const canSetDelivered = status === "shipped";

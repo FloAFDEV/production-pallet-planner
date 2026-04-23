@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Trash2, Truck } from "lucide-react";
 import { fmtDate, fmtInt, fmtKg, fmtPalette } from "@/lib/format";
-import { livraisonStatusMeta, normalizeLivraisonStatus, type LivraisonStatus } from "@/lib/domain";
+import { livraisonStatusMeta, type LivraisonStatus } from "@/lib/domain";
 import { UI } from "@/lib/uiLabels";
 import agecetLogo from "@/assets/logo_agecet_hands.jpg";
 
@@ -180,7 +180,7 @@ function LivraisonsPage() {
           <Card><CardContent className="py-12 text-center text-muted-foreground text-sm">Aucun shipment pour le moment.</CardContent></Card>
         )}
         {(shipments.data ?? []).map((s: any) => {
-          const status = normalizeLivraisonStatus(s.status);
+          const status = String(s.status);
           const canPrepare = status === "draft";
           const canLoad = status === "ready";
           const canShip = status === "shipped";

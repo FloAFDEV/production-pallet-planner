@@ -16,52 +16,6 @@ export type LivraisonStatus =
 
 export type ShipmentStatus = LivraisonStatus;
 
-const productionStatusAliases: Record<string, ProductionStatus> = {
-  draft: "draft",
-  brouillon: "draft",
-  ready: "ready",
-  pret: "ready",
-  in_progress: "in_progress",
-  en_cours: "in_progress",
-  paused: "paused",
-  en_pause: "paused",
-  done: "done",
-  termine: "done",
-  cancelled: "cancelled",
-  canceled: "cancelled",
-  annule: "cancelled",
-  priority: "in_progress",
-};
-
-const livraisonStatusAliases: Record<string, LivraisonStatus> = {
-  draft: "draft",
-  brouillon: "draft",
-  ready: "ready",
-  pret: "ready",
-  shipped: "shipped",
-  expedie: "shipped",
-  delivered: "delivered",
-  livre: "delivered",
-};
-
-export function normalizeProductionStatus(raw: string | null | undefined): ProductionStatus | null {
-  if (!raw) return null;
-  return productionStatusAliases[String(raw).toLowerCase()] ?? null;
-}
-
-export function normalizeLivraisonStatus(raw: string | null | undefined): LivraisonStatus | null {
-  if (!raw) return null;
-  return livraisonStatusAliases[String(raw).toLowerCase()] ?? null;
-}
-
-export function toDbProductionStatus(status: ProductionStatus): string {
-  return status;
-}
-
-export function toDbLivraisonStatus(status: LivraisonStatus): string {
-  return status;
-}
-
 export const productionStatusMeta: Record<string, { label: string; cls: string }> = {
   draft: { label: "Brouillon", cls: "bg-muted text-muted-foreground" },
   ready: { label: "Prêt", cls: "bg-info/15 text-info border border-info/30" },

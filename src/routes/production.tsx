@@ -9,11 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { fmtInt } from "@/lib/format";
-import {
-  normalizeProductionStatus,
-  productionStatusMeta,
-  toDbProductionStatus,
-} from "@/lib/domain";
+import { productionStatusMeta } from "@/lib/domain";
 import { getProductionFeasibility } from "@/lib/getProductionFeasibility";
 
 type ProdRow = { id: string; coffret_id: string; quantity: number };
@@ -111,7 +107,7 @@ function ProductionPage() {
         .order("created_at", { ascending: false });
       if (error) throw error;
 
-      const filtered = ((rawOrders ?? []) as any[]).filter((o) => normalizeProductionStatus(String(o.status)) !== null);
+      const filtered = ((rawOrders ?? []) as any[]).filter((o) => ["draft", "ready", "in_progress", "paused", "done", "cancelled"].includes(String(o.status)));
       const ids = Array.from(new Set(filtered.map((o) => o.coffret_id).filter(Boolean)));
 
       let coffretMap = new Map<string, any>();
@@ -134,7 +130,7 @@ function ProductionPage() {
         const { data, error } = await sb.rpc("create_production_order_atomic", {
           p_coffret_id: row.coffret_id,
           p_quantity: row.quantity,
-          p_status: toDbProductionStatus("draft"),
+          p_status: "draft",
           p_priority: urgent ? 1 : 0,
           p_notes: null,
           p_idempotency_key: `production:${row.id}:${row.coffret_id}:${row.quantity}:${urgent ? 1 : 0}`,
@@ -160,7 +156,7 @@ function ProductionPage() {
     mutationFn: async ({ id, status }: { id: string; status: "in_progress" | "paused" }) => {
       const { error } = await sb
         .from("production_orders")
-        .update({ status: toDbProductionStatus(status) })
+        .update({ status })
         .eq("id", id);
       if (error) throw error;
     },
@@ -175,7 +171,7 @@ function ProductionPage() {
     mutationFn: async (id: string) => {
       const { error } = await sb
         .from("production_orders")
-        .update({ status: toDbProductionStatus("done"), done_at: new Date().toISOString() })
+        .update({ status: "done", done_at: new Date().toISOString() })
         .eq("id", id);
       if (error) throw error;
     },
@@ -364,7 +360,7 @@ function ProductionPage() {
                   </tr>
                 ) : (orders.data ?? []).map((o: any) => (
                   (() => {
-                    const status = normalizeProductionStatus(String(o.status));
+                    const status = String(o.status);
                     const canStart = status === "draft" || status === "ready";
                     const canPause = status === "in_progress";
                     const canResume = status === "paused";
@@ -383,8 +379,8 @@ function ProductionPage() {
                           </span>
                         </td>
                         <td className="p-3 text-center">
-                          <span className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-[11px] font-medium ${productionStatusMeta[status ?? ""]?.cls ?? "bg-muted text-muted-foreground border border-border"}`}>
-                            {productionStatusMeta[status ?? ""]?.label ?? String(o.status)}
+                          <span className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-[11px] font-medium ${productionStatusMeta[status]?.cls ?? "bg-muted text-muted-foreground border border-border"}`}>
+                            {productionStatusMeta[status]?.label ?? status}
                           </span>
                         </td>
                         <td className="p-3 text-right">

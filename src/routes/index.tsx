@@ -1,11 +1,13 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Boxes, Factory, Flame, TrendingDown } from "lucide-react";
 import { fmtInt } from "@/lib/format";
-import { normalizeProductionStatus, productionStatusMeta } from "@/lib/domain";
+import { productionStatusMeta } from "@/lib/domain";
+import { getStockSnapshotByComponents } from "@/lib/stockSnapshot";
 import { UI } from "@/lib/uiLabels";
 
 export const Route = createFileRoute("/")({
@@ -53,16 +55,14 @@ function Dashboard() {
     },
   });
 
+  const componentIds = useMemo(() => ((composants.data ?? []) as any[]).map((c) => c.id), [composants.data]);
+
   const stockAgg = useQuery({
-    queryKey: ["stock_movements", "agg"],
+    queryKey: ["stock_snapshot", "dashboard", componentIds],
+    enabled: componentIds.length > 0,
     refetchInterval: 10000,
     queryFn: async () => {
-      const { data, error } = await sb
-        .from("stock_by_composant")
-        .select("composant_id,total_stock");
-      if (error) throw error;
-
-      return (data ?? []) as any[];
+      return await getStockSnapshotByComponents(componentIds);
     },
   });
 
@@ -78,10 +78,7 @@ function Dashboard() {
       console.log("[dashboard] production_orders(active)", { data: ordersData, error });
       if (error) throw error;
 
-      const activeOrders = ((ordersData ?? []) as any[]).filter((o) => {
-        const status = normalizeProductionStatus(String(o.status));
-        return status === "draft" || status === "ready" || status === "in_progress" || status === "paused";
-      });
+      const activeOrders = ((ordersData ?? []) as any[]).filter((o) => ["draft", "ready", "in_progress", "paused"].includes(String(o.status)));
 
       const coffretIds = Array.from(new Set(activeOrders.map((o) => o.coffret_id).filter(Boolean)));
       let coffretMap = new Map<string, any>();
@@ -172,7 +169,7 @@ function Dashboard() {
     },
   });
 
-  const stockById = new Map<string, number>(((stockAgg.data ?? []) as any[]).map((r: any) => [r.composant_id, Number(r.total_stock ?? 0)]));
+  const stockById = new Map<string, number>(((stockAgg.data ?? []) as any[]).map((r: any) => [r.composant_id, Number(r.available_stock ?? 0)]));
 
   const composantsWithStock = ((composants.data ?? []) as any[]).map((c: any) => {
     const stock = stockById.get(c.id) ?? 0;
@@ -187,7 +184,7 @@ function Dashboard() {
     return (c.is_active ?? true) && dispo <= Number(c.min_stock ?? 0);
   });
   const ordersList: any[] = (orders.data ?? []) as any[];
-  const enCours = ordersList.filter((o) => normalizeProductionStatus(String(o.status)) === "in_progress");
+  const enCours = ordersList.filter((o) => String(o.status) === "in_progress");
   const prioritaires = ordersList.filter((o) => Number(o.priority ?? 0) === 1);
   const shipmentsReady = ((shipments.data ?? []) as any[]).filter((s) => String(s.status ?? "") === "ready");
   const openCommercialOrders = ((commercialOrders.data ?? []) as any[]).filter((o) => !["done", "delivered", "canceled", "cancelled"].includes(String(o.status ?? "")));
@@ -421,7 +418,6 @@ function KPI({ icon, label, value, accent, to, cta }: { icon: React.ReactNode; l
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  const canonical = normalizeProductionStatus(status);
-  const m = productionStatusMeta[canonical ?? ""] ?? { label: status, cls: "bg-muted text-muted-foreground" };
+  const m = productionStatusMeta[status] ?? { label: status, cls: "bg-muted text-muted-foreground" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${m.cls}`}>{m.label}</span>;
 }
