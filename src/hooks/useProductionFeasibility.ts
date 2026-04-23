@@ -36,18 +36,27 @@ export function useProductionFeasibility(
   });
 
   const nomenclaturesQuery = useQuery({
-    queryKey: ["nomenclatures", "feasibility", coffretId],
+    queryKey: ["bom_lines", "feasibility", coffretId],
     enabled: !!coffretId,
     queryFn: async () => {
+      const { data: activeVersion, error: versionError } = await sb
+        .from("bom_versions")
+        .select("id")
+        .eq("product_variant_id", coffretId)
+        .eq("is_active", true)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (versionError) throw versionError;
+      if (!activeVersion?.id) return [];
+
       const { data, error } = await sb
-        .from("nomenclatures")
+        .from("bom_lines")
         .select("id, quantity, composant_id")
-        .eq("coffret_id", coffretId)
+        .eq("bom_version_id", activeVersion.id)
         .order("created_at", { ascending: true });
-
       if (error) throw error;
-
-      return data;
+      return data ?? [];
     },
   });
 

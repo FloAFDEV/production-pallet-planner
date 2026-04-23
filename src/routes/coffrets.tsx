@@ -53,13 +53,24 @@ function CoffretsPage() {
   });
 
   const nomenclatures = useQuery({
-    queryKey: ["nomenclatures", selectedId],
+    queryKey: ["bom_lines", selectedId],
     enabled: Boolean(selectedId),
     queryFn: async () => {
+      const { data: activeVersion, error: versionError } = await sb
+        .from("bom_versions")
+        .select("id")
+        .eq("product_variant_id", selectedId)
+        .eq("is_active", true)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (versionError) throw versionError;
+      if (!activeVersion?.id) return [];
+
       const { data: nomenclaturesData, error } = await sb
-        .from("nomenclatures")
+        .from("bom_lines")
         .select("id, quantity, composant_id")
-        .eq("coffret_id", selectedId)
+        .eq("bom_version_id", activeVersion.id)
         .order("created_at", { ascending: true });
       if (error) throw error;
 
@@ -126,8 +137,40 @@ function CoffretsPage() {
       const quantity = parseInt(newCompQty, 10);
       if (!quantity || quantity <= 0) throw new Error("Quantite invalide");
 
-      const { error } = await sb.from("nomenclatures").insert({
-        coffret_id: selectedId,
+      let bomVersionId: string | null = null;
+      const { data: activeVersion, error: activeVersionError } = await sb
+        .from("bom_versions")
+        .select("id")
+        .eq("product_variant_id", selectedId)
+        .eq("is_active", true)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (activeVersionError) throw activeVersionError;
+
+      if (activeVersion?.id) {
+        bomVersionId = activeVersion.id;
+      } else {
+        const { data: maxVersionRows, error: maxVersionError } = await sb
+          .from("bom_versions")
+          .select("version")
+          .eq("product_variant_id", selectedId)
+          .order("version", { ascending: false })
+          .limit(1);
+        if (maxVersionError) throw maxVersionError;
+        const nextVersion = Number((maxVersionRows ?? [])[0]?.version ?? 0) + 1;
+
+        const { data: createdVersion, error: createVersionError } = await sb
+          .from("bom_versions")
+          .insert({ product_variant_id: selectedId, version: nextVersion, is_active: true })
+          .select("id")
+          .single();
+        if (createVersionError) throw createVersionError;
+        bomVersionId = createdVersion.id;
+      }
+
+      const { error } = await sb.from("bom_lines").insert({
+        bom_version_id: bomVersionId,
         composant_id: newCompId,
         quantity,
       });
@@ -137,7 +180,7 @@ function CoffretsPage() {
       toast.success("Ligne nomenclature ajoutee");
       setNewCompId("");
       setNewCompQty("1");
-      qc.invalidateQueries({ queryKey: ["nomenclatures", selectedId] });
+      qc.invalidateQueries({ queryKey: ["bom_lines", selectedId] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -146,21 +189,21 @@ function CoffretsPage() {
     mutationFn: async ({ id, quantity }: { id: string; quantity?: number }) => {
       const payload: Record<string, unknown> = {};
       if (quantity != null) payload.quantity = quantity;
-      const { error } = await sb.from("nomenclatures").update(payload).eq("id", id);
+      const { error } = await sb.from("bom_lines").update(payload).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["nomenclatures", selectedId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bom_lines", selectedId] }),
     onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteNomenclature = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await sb.from("nomenclatures").delete().eq("id", id);
+      const { error } = await sb.from("bom_lines").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Ligne nomenclature supprimee");
-      qc.invalidateQueries({ queryKey: ["nomenclatures", selectedId] });
+      qc.invalidateQueries({ queryKey: ["bom_lines", selectedId] });
     },
     onError: (e: Error) => toast.error(e.message),
   });

@@ -55,37 +55,11 @@ export function normalizeLivraisonStatus(raw: string | null | undefined): Livrai
 }
 
 export function toDbProductionStatus(status: ProductionStatus): string {
-  switch (status) {
-    case "draft":
-      return "brouillon";
-    case "ready":
-      return "pret";
-    case "in_progress":
-      return "en_cours";
-    case "paused":
-      return "en_pause";
-    case "done":
-      return "termine";
-    case "cancelled":
-      return "annule";
-    default:
-      return "brouillon";
-  }
+  return status;
 }
 
 export function toDbLivraisonStatus(status: LivraisonStatus): string {
-  switch (status) {
-    case "draft":
-      return "brouillon";
-    case "ready":
-      return "pret";
-    case "shipped":
-      return "expedie";
-    case "delivered":
-      return "livre";
-    default:
-      return "brouillon";
-  }
+  return status;
 }
 
 export const productionStatusMeta: Record<string, { label: string; cls: string }> = {

@@ -39,7 +39,7 @@ function StockPage() {
     queryKey: ["stock_movements"],
     queryFn: async () => {
       const { data: mouvementRows, error } = await sb
-        .from("mouvements")
+        .from("stock_movements")
         .select("*")
         .order("created_at", { ascending: false })
         .limit(100);
@@ -171,7 +171,7 @@ function StockPage() {
                         </td>
                         <td className="p-3">
                           <span className="inline-flex items-center rounded-sm border border-border bg-muted px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide">
-                            {m.entity_type ?? "n/a"}
+                            {m.source_type ?? m.entity_type ?? "n/a"}
                           </span>
                         </td>
                         <td className="p-3 text-center">
@@ -190,8 +190,8 @@ function StockPage() {
                           )}
                         </td>
                         <td className="p-3 text-right tabular font-semibold">{fmtInt(m.quantity)}</td>
-                        <td className="p-3 text-muted-foreground">{m.reason ?? "—"}</td>
-                        <td className="p-3 font-mono text-xs text-muted-foreground">{m.reference_id ?? "—"}</td>
+                        <td className="p-3 text-muted-foreground">{m.reason ?? m.source_type ?? "—"}</td>
+                        <td className="p-3 font-mono text-xs text-muted-foreground">{m.source_id ?? m.reference_id ?? "—"}</td>
                         <td className="p-3 text-xs text-muted-foreground">{m.created_by ?? "Système"}</td>
                       </tr>
                     ))}

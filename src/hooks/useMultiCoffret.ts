@@ -90,7 +90,7 @@ export function useCreateProductionOrderSafe() {
       const { data, error } = await sb.rpc("create_production_order_safe", {
         p_coffret_id: params.coffret_id,
         p_quantity: params.quantity,
-        p_status: params.status || "brouillon",
+        p_status: params.status || "draft",
         p_priority: params.priority ?? 0,
         p_notes: params.notes || null,
       });
