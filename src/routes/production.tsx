@@ -107,7 +107,7 @@ function ProductionPage() {
         .order("created_at", { ascending: false });
       if (error) throw error;
 
-      const filtered = ((rawOrders ?? []) as any[]).filter((o) => ["draft", "ready", "in_progress", "paused", "done", "cancelled"].includes(String(o.status)));
+      const filtered = (rawOrders ?? []) as any[];
       const ids = Array.from(new Set(filtered.map((o) => o.coffret_id).filter(Boolean)));
 
       let coffretMap = new Map<string, any>();
@@ -130,7 +130,7 @@ function ProductionPage() {
         const { data, error } = await sb.rpc("create_production_order_atomic", {
           p_coffret_id: row.coffret_id,
           p_quantity: row.quantity,
-          p_status: "draft",
+          p_status: urgent ? "priority" : "draft",
           p_priority: urgent ? 1 : 0,
           p_notes: null,
           p_idempotency_key: `production:${row.id}:${row.coffret_id}:${row.quantity}:${urgent ? 1 : 0}`,
@@ -153,10 +153,10 @@ function ProductionPage() {
   });
 
   const transition = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: "in_progress" | "paused" }) => {
+    mutationFn: async ({ id, status }: { id: string; status: "in_progress" | "done" }) => {
       const statusMap: Record<string, string> = {
         in_progress: "in_progress",
-        paused: "paused",
+        done: "done",
       };
 
       const { data, error } = await sb.rpc("transition_production_order_status", {
@@ -366,21 +366,24 @@ function ProductionPage() {
               <tbody>
                 {(orders.data ?? []).length === 0 ? (
                   <tr>
-                    <td className="p-4 text-sm text-muted-foreground" colSpan={5}>Aucune donnée disponible</td>
+                    <td className="p-4 text-sm text-muted-foreground" colSpan={5}>
+                      <div className="flex flex-col items-center gap-2 py-2 text-center">
+                        <span>Aucune donnée disponible</span>
+                        <Link to="/production" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Créer fabrication</Link>
+                      </div>
+                    </td>
                   </tr>
                 ) : (orders.data ?? []).map((o: any) => (
                   (() => {
                     const status = String(o.status);
-                    const canStart = status === "draft" || status === "ready";
-                    const canPause = status === "in_progress";
-                    const canResume = status === "paused";
-                    const canFinish = status === "draft" || status === "ready" || status === "in_progress" || status === "paused";
+                    const canStart = status === "draft" || status === "priority";
+                    const canFinish = status === "in_progress";
 
                     return (
                       <tr key={o.id} className="border-t border-border">
                         <td className="p-3">
-                          <div className="font-medium">{o.coffret?.name ?? "Aucune donnée disponible"}</div>
-                          <div className="text-xs text-muted-foreground font-mono">{o.coffret?.reference ?? "Aucune donnée disponible"}</div>
+                          <div className="font-medium">{o.coffret?.name ?? "Données manquantes"}</div>
+                          <div className="text-xs text-muted-foreground font-mono">{o.coffret?.reference ?? "Données manquantes"}</div>
                         </td>
                         <td className="p-3 text-right tabular font-semibold">{fmtInt(o.quantity)}</td>
                         <td className="p-3 text-center">
@@ -390,7 +393,7 @@ function ProductionPage() {
                         </td>
                         <td className="p-3 text-center">
                           <span className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-[11px] font-medium ${productionStatusMeta[status]?.cls ?? "bg-muted text-muted-foreground border border-border"}`}>
-                            {productionStatusMeta[status]?.label ?? status}
+                            {productionStatusMeta[status]?.label ?? "Statut inconnu"}
                           </span>
                         </td>
                         <td className="p-3 text-right">
@@ -398,16 +401,6 @@ function ProductionPage() {
                             {canStart && (
                               <Button size="sm" variant="outline" onClick={() => transition.mutate({ id: o.id, status: "in_progress" })} disabled={transition.isPending}>
                                 Démarrer
-                              </Button>
-                            )}
-                            {canPause && (
-                              <Button size="sm" variant="outline" onClick={() => transition.mutate({ id: o.id, status: "paused" })} disabled={transition.isPending}>
-                                Mettre en pause
-                              </Button>
-                            )}
-                            {canResume && (
-                              <Button size="sm" variant="outline" onClick={() => transition.mutate({ id: o.id, status: "in_progress" })} disabled={transition.isPending}>
-                                Reprendre
                               </Button>
                             )}
                             {canFinish && (

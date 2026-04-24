@@ -48,17 +48,12 @@ function Dashboard() {
     refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await sb.from("composants").select("id,reference,name,min_stock,is_active").order("reference");
-      console.log("[dashboard] composants", { data, error });
-      if (error) {
-        console.error("[dashboard] composants error", error);
-        throw error;
-      }
+      if (error) throw error;
       return data;
     },
   });
 
   const componentIds = useMemo(() => ((composants.data ?? []) as any[]).map((c) => c.id), [composants.data]);
-  console.log("componentIds", componentIds);
 
   const stockAgg = useQuery({
     queryKey: ["stock_snapshot", "dashboard", componentIds],
@@ -69,11 +64,7 @@ function Dashboard() {
       const { data, error } = await sb.rpc("get_stock_snapshot_by_components", {
         component_ids: componentIds,
       });
-      console.log("stock snapshot", data);
-      if (error) {
-        console.log("[dashboard] stock snapshot fallback", error.message);
-        return [];
-      }
+      if (error) return [];
       return data ?? [];
     },
   });
@@ -87,14 +78,9 @@ function Dashboard() {
         .select("*")
         .order("status", { ascending: false })
         .order("created_at", { ascending: false });
-      console.log("[dashboard] production_orders(active)", { data: ordersData, error });
-      console.log("orders", ordersData);
-      if (error) {
-        console.error("[dashboard] production_orders error", error);
-        throw error;
-      }
+      if (error) throw error;
 
-      const activeOrders = ((ordersData ?? []) as any[]).filter((o) => ["draft", "ready", "in_progress", "paused"].includes(String(o.status)));
+      const activeOrders = ((ordersData ?? []) as any[]).filter((o) => ["draft", "brouillon", "pret", "in_progress", "en_cours", "en_pause", "priority"].includes(String(o.status)));
 
       const coffretIds = Array.from(new Set(activeOrders.map((o) => o.coffret_id).filter(Boolean)));
       let coffretMap = new Map<string, any>();
@@ -103,10 +89,7 @@ function Dashboard() {
           .from("coffrets")
           .select("id,reference,name")
           .in("id", coffretIds);
-        if (coffretsError) {
-          console.error("[dashboard] coffrets by ids error", coffretsError);
-          throw coffretsError;
-        }
+        if (coffretsError) throw coffretsError;
         coffretMap = new Map((coffretsData ?? []).map((c: any) => [c.id, c]));
       }
 
@@ -125,11 +108,7 @@ function Dashboard() {
         .from("orders")
         .select("id, reference, status, created_at, client_id")
         .order("created_at", { ascending: false });
-      console.log("[dashboard] orders(open)", { data: ordersData, error });
-      if (error) {
-        console.error("[dashboard] orders error", error);
-        throw error;
-      }
+      if (error) throw error;
 
       const orderIds = ((ordersData ?? []) as any[]).map((o) => o.id);
       const clientIds = Array.from(new Set(((ordersData ?? []) as any[]).map((o) => o.client_id).filter(Boolean)));
@@ -140,10 +119,7 @@ function Dashboard() {
           .from("clients")
           .select("id,name")
           .in("id", clientIds);
-        if (clientsError) {
-          console.error("[dashboard] clients by ids error", clientsError);
-          throw clientsError;
-        }
+        if (clientsError) throw clientsError;
         clientMap = new Map((clientsData ?? []).map((c: any) => [c.id, c]));
       }
 
@@ -153,10 +129,7 @@ function Dashboard() {
           .from("order_lines")
           .select("id,order_id,quantity,product_variant_id")
           .in("order_id", orderIds);
-        if (linesError) {
-          console.error("[dashboard] order_lines by ids error", linesError);
-          throw linesError;
-        }
+        if (linesError) throw linesError;
         for (const line of (linesData ?? []) as any[]) {
           const current = linesByOrder.get(line.order_id) ?? [];
           current.push(line);
@@ -179,10 +152,7 @@ function Dashboard() {
       const { data, error } = await sb
         .from("coffret_components")
         .select("coffret_id,composant_id,quantity");
-      if (error) {
-        console.error("[dashboard] coffret_components error", error);
-        throw error;
-      }
+      if (error) throw error;
       return (data ?? []) as any[];
     },
   });
@@ -195,10 +165,7 @@ function Dashboard() {
         .from("shipments")
         .select("id,reference,status,client_id,created_at")
         .order("created_at", { ascending: false });
-      if (error) {
-        console.error("[dashboard] shipments error", error);
-        throw error;
-      }
+      if (error) throw error;
       return (data ?? []) as any[];
     },
   });
@@ -206,21 +173,22 @@ function Dashboard() {
   const stockById = new Map<string, number>(((stockAgg.data ?? []) as any[]).map((r: any) => [r.composant_id, Number(r.available_stock ?? 0)]));
 
   const composantsWithStock = ((composants.data ?? []) as any[]).map((c: any) => {
+    const stockBrut = Number(c.stock ?? 0);
     const stock = stockById.get(c.id) ?? 0;
-    return { ...c, stock };
+    return { ...c, stockBrut, stock };
   });
 
   const totalStock = composantsWithStock.reduce((s: number, c: any) => s + Number(c.stock ?? 0), 0);
-  const totalReserve = 0;
-  const totalDisponible = totalStock;
+  const totalReserve = composantsWithStock.reduce((s: number, c: any) => s + Math.max(0, Number(c.stockBrut ?? 0) - Number(c.stock ?? 0)), 0);
+  const totalDisponible = composantsWithStock.reduce((s: number, c: any) => s + Number(c.stock ?? 0), 0);
   const alertes = (composants.data ?? []).filter((c: any) => {
     const dispo = Number(((composantsWithStock.find((row: any) => row.id === c.id) ?? {}).stock ?? 0));
     return (c.is_active ?? true) && dispo <= Number(c.min_stock ?? 0);
   });
   const ordersList: any[] = (orders.data ?? []) as any[];
-  const enCours = ordersList.filter((o) => String(o.status) === "in_progress");
+  const enCours = ordersList.filter((o) => ["in_progress", "en_cours", "en_pause"].includes(String(o.status)));
   const prioritaires = ordersList.filter((o) => Number(o.priority ?? 0) === 1);
-  const shipmentsReady = ((shipments.data ?? []) as any[]).filter((s) => String(s.status ?? "") === "ready");
+  const shipmentsReady = ((shipments.data ?? []) as any[]).filter((s) => ["ready", "pret"].includes(String(s.status ?? "")));
   const openCommercialOrders = ((commercialOrders.data ?? []) as any[]).filter((o) => !["done", "delivered", "canceled", "cancelled"].includes(String(o.status ?? "")));
 
   const componentDemandByOrder = new Map<string, number>();
@@ -285,16 +253,22 @@ function Dashboard() {
             <Badge variant="outline">{openCommercialOrders.length}</Badge>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            {(openCommercialOrders.slice(0, 3) as any[]).map((o) => (
-              <div key={o.id} className="py-1.5 flex items-center justify-between gap-2">
-                <span className="font-mono text-xs">{o.reference ?? o.id.slice(0, 8)}</span>
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="truncate">{o.client?.name ?? "Données manquantes"}</span>
-                  <Link to="/production" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Produire</Link>
-                </div>
+            {openCommercialOrders.length === 0 ? (
+              <div className="py-6 text-center space-y-2">
+                <p>Aucune donnée disponible.</p>
+                <Link to="/production" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Créer fabrication</Link>
               </div>
-            ))}
-            {openCommercialOrders.length === 0 && <p>Aucune commande en attente.</p>}
+            ) : (
+              (openCommercialOrders.slice(0, 3) as any[]).map((o) => (
+                <div key={o.id} className="py-1.5 flex items-center justify-between gap-2">
+                  <span className="font-mono text-xs">{o.reference ?? o.id.slice(0, 8)}</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="truncate">{o.client?.name ?? "Données manquantes"}</span>
+                    <Link to="/production" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Produire</Link>
+                  </div>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
 
@@ -307,7 +281,10 @@ function Dashboard() {
           </CardHeader>
           <CardContent>
             {projectedRuptures.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune rupture previsionnelle detectee.</p>
+              <div className="py-6 text-center space-y-2 text-sm text-muted-foreground">
+                <p>Aucune donnée disponible.</p>
+                <Link to="/stock" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Voir stock</Link>
+              </div>
             ) : (
               <ul className="divide-y divide-border">
                 {projectedRuptures.slice(0, 6).map((c) => (
@@ -339,7 +316,10 @@ function Dashboard() {
           </CardHeader>
           <CardContent>
             {alertes.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center">Aucune alerte. Tous les stocks sont au-dessus du seuil minimum.</p>
+              <div className="py-6 text-center space-y-2 text-sm text-muted-foreground">
+                <p>Aucune donnée disponible.</p>
+                <Link to="/stock" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Corriger stock</Link>
+              </div>
             ) : (
               <ul className="divide-y divide-border">
                 {alertes.map((c: any) => {
@@ -372,7 +352,10 @@ function Dashboard() {
           </CardHeader>
           <CardContent>
             {ordersList.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center">Aucun ordre actif.</p>
+              <div className="py-6 text-center space-y-2 text-sm text-muted-foreground">
+                <p>Aucune donnée disponible.</p>
+                <Link to="/production" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Créer fabrication</Link>
+              </div>
             ) : (
               <ul className="divide-y divide-border">
                 {ordersList.map((o) => (
@@ -452,6 +435,6 @@ function KPI({ icon, label, value, accent, to, cta }: { icon: React.ReactNode; l
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  const m = productionStatusMeta[status] ?? { label: status, cls: "bg-muted text-muted-foreground" };
+  const m = productionStatusMeta[status] ?? { label: "Statut inconnu", cls: "bg-muted text-muted-foreground" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${m.cls}`}>{m.label}</span>;
 }

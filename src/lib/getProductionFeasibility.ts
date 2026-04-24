@@ -81,7 +81,26 @@ export async function getProductionFeasibility(
     component_ids: composantIds,
   });
   if (stockError) {
-    console.warn("[getProductionFeasibility] stock snapshot unavailable", stockError.message);
+    const totalMissing = Array.from(neededByComposant.values()).reduce((sum, value) => sum + value, 0);
+    return {
+      can_produce: false,
+      summary: { total_missing: totalMissing, total_components: composantIds.length },
+      components: composantIds.map((composantId) => ({
+        composant_id: composantId,
+        name: nameById.get(composantId) ?? "Inconnu",
+        needed: neededByComposant.get(composantId) ?? 0,
+        available: 0,
+        missing: neededByComposant.get(composantId) ?? 0,
+        status: "missing" as const,
+      })),
+      missing: composantIds.map((composantId) => ({
+        composant_id: composantId,
+        name: nameById.get(composantId) ?? "Inconnu",
+        needed: neededByComposant.get(composantId) ?? 0,
+        available: 0,
+        missing: neededByComposant.get(composantId) ?? 0,
+      })),
+    };
   }
   const stockById = new Map<string, number>((stockRows ?? []).map((row) => [row.composant_id, Number(row.available_stock ?? 0)]));
 

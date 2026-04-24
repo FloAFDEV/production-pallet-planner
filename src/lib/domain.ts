@@ -17,12 +17,17 @@ export type LivraisonStatus =
 export type ShipmentStatus = LivraisonStatus;
 
 export const productionStatusMeta: Record<string, { label: string; cls: string }> = {
-  draft: { label: "Brouillon", cls: "bg-muted text-muted-foreground" },
-  ready: { label: "Prêt", cls: "bg-info/15 text-info border border-info/30" },
+  draft: { label: "À produire", cls: "bg-muted text-muted-foreground" },
+  brouillon: { label: "À produire", cls: "bg-muted text-muted-foreground" },
+  pret: { label: "À produire", cls: "bg-muted text-muted-foreground" },
   in_progress: { label: "En cours", cls: "bg-info/15 text-info border border-info/30" },
-  paused: { label: "En pause", cls: "bg-warning/15 text-warning border border-warning/30" },
+  en_cours: { label: "En cours", cls: "bg-info/15 text-info border border-info/30" },
+  en_pause: { label: "En cours", cls: "bg-info/15 text-info border border-info/30" },
   done: { label: "Terminé", cls: "bg-success/15 text-success border border-success/30" },
-  cancelled: { label: "Annulé", cls: "bg-muted text-muted-foreground border border-border" },
+  termine: { label: "Terminé", cls: "bg-success/15 text-success border border-success/30" },
+  annule: { label: "Terminé", cls: "bg-success/15 text-success border border-success/30" },
+  priority: { label: "Urgent", cls: "bg-destructive/15 text-destructive border border-destructive/30" },
+  ready: { label: "À produire", cls: "bg-muted text-muted-foreground" },
 };
 
 export const productionPriorityMeta: Record<ProductionPriority, { label: string; cls: string }> = {
@@ -31,17 +36,25 @@ export const productionPriorityMeta: Record<ProductionPriority, { label: string;
 };
 
 export const livraisonStatusMeta: Record<string, { label: string; cls: string }> = {
-  draft: { label: "Brouillon", cls: "bg-muted text-muted-foreground" },
+  draft: { label: "À expédier", cls: "bg-muted text-muted-foreground" },
+  brouillon: { label: "À expédier", cls: "bg-muted text-muted-foreground" },
   ready: { label: "Prêt", cls: "bg-info/15 text-info border border-info/30" },
+  pret: { label: "Prêt", cls: "bg-info/15 text-info border border-info/30" },
   shipped: { label: "Expédié", cls: "bg-warning/15 text-warning border border-warning/30" },
+  expedie: { label: "Expédié", cls: "bg-warning/15 text-warning border border-warning/30" },
   delivered: { label: "Livré", cls: "bg-success/15 text-success border border-success/30" },
+  livre: { label: "Livré", cls: "bg-success/15 text-success border border-success/30" },
 };
 
 export const shipmentStatusMeta: Record<string, { label: string; cls: string }> = {
-  draft: { label: "Brouillon", cls: "bg-muted text-muted-foreground" },
+  draft: { label: "À expédier", cls: "bg-muted text-muted-foreground" },
+  brouillon: { label: "À expédier", cls: "bg-muted text-muted-foreground" },
   ready: { label: "Prêt", cls: "bg-info/15 text-info border border-info/30" },
+  pret: { label: "Prêt", cls: "bg-info/15 text-info border border-info/30" },
   shipped: { label: "Expédié", cls: "bg-warning/15 text-warning border border-warning/30" },
+  expedie: { label: "Expédié", cls: "bg-warning/15 text-warning border border-warning/30" },
   delivered: { label: "Livré", cls: "bg-success/15 text-success border border-success/30" },
+  livre: { label: "Livré", cls: "bg-success/15 text-success border border-success/30" },
 };
 
 export function formatClientAddress(client: {

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { fmtDateTime, fmtInt, fmtKg } from "@/lib/format";
+import { fmtDateTime, fmtInt } from "@/lib/format";
 import { record_stock_movement } from "@/lib/stockMovements";
 
 export const Route = createFileRoute("/stock")({
@@ -49,12 +49,7 @@ function StockPage() {
       const { data: stockRows, error: stockError } = await sb.rpc("get_stock_snapshot_by_components", {
         component_ids: composantIds,
       });
-      if (stockError) {
-        console.warn("[stock] stock snapshot unavailable", stockError.message);
-        return {
-          stockById: new Map<string, number>(),
-        };
-      }
+      if (stockError) return { stockById: new Map<string, number>() };
 
       return {
         stockById: new Map<string, number>(
@@ -94,6 +89,14 @@ function StockPage() {
       }));
     },
   });
+
+  const formatMovementContext = (sourceType?: string | null, entityType?: string | null) => {
+    const value = sourceType ?? entityType ?? "";
+    if (value === "production_order") return "Sortie production";
+    if (value === "manual_fix") return "Correction manuelle";
+    if (!value) return "Mouvement atelier";
+    return "Mouvement atelier";
+  };
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
@@ -138,7 +141,6 @@ function StockPage() {
                       <th className="text-right p-3">Disponible</th>
                       <th className="text-right p-3">Seuil min.</th>
                       <th className="text-left p-3">Emplacement</th>
-                      <th className="text-right p-3">Poids u.</th>
                       <th className="text-center p-3">État</th>
                       <th className="text-right p-3">Action</th>
                     </tr>
@@ -146,7 +148,12 @@ function StockPage() {
                   <tbody>
                     {(composants.data ?? []).length === 0 ? (
                       <tr>
-                        <td className="p-4 text-sm text-muted-foreground" colSpan={10}>Aucune donnée disponible</td>
+                        <td className="p-4 text-sm text-muted-foreground text-center" colSpan={9}>
+                          <div className="flex flex-col items-center gap-2 py-2">
+                            <span>Aucune donnée disponible</span>
+                            <Link to="/production" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Créer fabrication</Link>
+                          </div>
+                        </td>
                       </tr>
                     ) : (composants.data ?? []).map((c: any) => {
                       const stockBrut = Number(c.stock ?? 0);
@@ -162,7 +169,6 @@ function StockPage() {
                           <td className={"p-3 text-right tabular font-semibold " + (alerte ? "text-destructive" : "")}>{fmtInt(disponible)}</td>
                           <td className="p-3 text-right tabular text-muted-foreground">{fmtInt(c.min_stock)}</td>
                           <td className="p-3 text-xs text-muted-foreground">{c.location ?? "—"}</td>
-                          <td className="p-3 text-right tabular text-muted-foreground">{fmtKg(c.poids_unitaire)}</td>
                           <td className="p-3 text-center">
                             {(c.is_active ?? true) === false ? (
                               <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-muted text-muted-foreground border border-border">Inactif</span>
@@ -201,7 +207,6 @@ function StockPage() {
                       <th className="text-center p-3">Type</th>
                       <th className="text-right p-3">Quantité</th>
                       <th className="text-left p-3">Motif</th>
-                      <th className="text-left p-3">Référence</th>
                       <th className="text-left p-3">Auteur</th>
                       <th className="text-right p-3">Action</th>
                     </tr>
@@ -209,7 +214,12 @@ function StockPage() {
                   <tbody>
                     {(mouvements.data ?? []).length === 0 ? (
                       <tr>
-                        <td className="p-4 text-sm text-muted-foreground" colSpan={9}>Aucune donnée disponible</td>
+                        <td className="p-4 text-sm text-muted-foreground text-center" colSpan={8}>
+                          <div className="flex flex-col items-center gap-2 py-2">
+                            <span>Aucune donnée disponible</span>
+                            <Link to="/production" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Créer fabrication</Link>
+                          </div>
+                        </td>
                       </tr>
                     ) : (mouvements.data ?? []).map((m) => (
                       <tr key={m.id} className="border-t border-border">
@@ -220,7 +230,7 @@ function StockPage() {
                         </td>
                         <td className="p-3">
                           <span className="inline-flex items-center rounded-sm border border-border bg-muted px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide">
-                            {m.source_type ?? m.entity_type ?? "n/a"}
+                            {formatMovementContext(m.source_type, m.entity_type)}
                           </span>
                         </td>
                         <td className="p-3 text-center">
@@ -234,13 +244,12 @@ function StockPage() {
                             </span>
                           ) : (
                             <span className="inline-flex items-center rounded-sm border border-border bg-muted px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide">
-                              {String(m.type ?? "n/a")}
+                                {String(m.type ?? "Mouvement")}
                             </span>
                           )}
                         </td>
                         <td className="p-3 text-right tabular font-semibold">{fmtInt(m.quantity)}</td>
-                        <td className="p-3 text-muted-foreground">{m.reason ?? m.source_type ?? "—"}</td>
-                        <td className="p-3 font-mono text-xs text-muted-foreground">{m.source_id ?? m.reference_id ?? "—"}</td>
+                          <td className="p-3 text-muted-foreground">{m.reason ?? "Aucun motif"}</td>
                         <td className="p-3 text-xs text-muted-foreground">{m.created_by ?? "Système"}</td>
                         <td className="p-3 text-right">
                           <Button size="sm" variant="outline" onClick={() => { setPresetComponentId(m.composant_id); setPresetType("IN"); setPresetReason("Correction après mouvement"); setDialogOpen(true); }}>
