@@ -71,12 +71,35 @@ function LivraisonDetail() {
         .order("created_at", { ascending: true });
       if (palletError) throw palletError;
 
+      const palletIds = (palletRows ?? []).map((p: any) => p.id).filter(Boolean);
+      let palletLinesByPallet = new Map<string, any[]>();
+      if (palletIds.length > 0) {
+        const { data: palletLineRows, error: palletLineError } = await sb
+          .from("shipment_pallet_lines")
+          .select("id,pallet_id,shipment_line_id,quantity")
+          .in("pallet_id", palletIds);
+        if (palletLineError) throw palletLineError;
+        for (const pl of (palletLineRows ?? []) as any[]) {
+          const current = palletLinesByPallet.get(pl.pallet_id) ?? [];
+          // Enrichir avec le détail de la ligne shipment
+          const shipmentLine = lineRows.find((l: any) => l.id === pl.shipment_line_id);
+          current.push({
+            ...pl,
+            shipment_line: shipmentLine ? { ...shipmentLine, variant: variantMap.get(shipmentLine.product_variant_id) ?? null } : null,
+          });
+          palletLinesByPallet.set(pl.pallet_id, current);
+        }
+      }
+
       return {
         ...shipment,
         status: normalizeLivraisonStatus(shipment.status),
         client_entity: clientEntity,
         lines: ((lineRows ?? []) as any[]).map((l) => ({ ...l, variant: variantMap.get(l.product_variant_id) ?? null })),
-        pallets: palletRows ?? [],
+        pallets: (palletRows ?? []).map((p: any) => ({
+          ...p,
+          pallet_lines: palletLinesByPallet.get(p.id) ?? [],
+        })),
       };
     },
   });

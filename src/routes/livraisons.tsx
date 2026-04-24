@@ -133,25 +133,51 @@ function LivraisonsPage() {
         linesByShipment.set(line.shipment_id, current);
       }
 
-      const palletsByShipment = new Map<string, number>();
+      let palletRows: any[] = [];
+      const palletsByShipment = new Map<string, any[]>();
       if (shipmentIds.length > 0) {
-        const { data: palletRows, error: palletError } = await sb
+        const { data, error: palletError } = await sb
           .from("shipment_pallets")
-          .select("id,shipment_id")
+          .select("id,shipment_id,label,type,weight,width,height,depth")
           .in("shipment_id", shipmentIds);
         if (palletError) throw palletError;
-        for (const pallet of (palletRows ?? []) as any[]) {
-          palletsByShipment.set(pallet.shipment_id, (palletsByShipment.get(pallet.shipment_id) ?? 0) + 1);
+        palletRows = data ?? [];
+        for (const pallet of palletRows) {
+          const current = palletsByShipment.get(pallet.shipment_id) ?? [];
+          current.push(pallet);
+          palletsByShipment.set(pallet.shipment_id, current);
         }
       }
 
-      return ((shipmentRows ?? []) as any[]).map((s) => ({
-        ...s,
-        status: normalizeLivraisonStatus(s.status),
-        client_entity: s.client_id ? clientMap.get(s.client_id) ?? null : null,
-        lines: linesByShipment.get(s.id) ?? [],
-        pallet_count: palletsByShipment.get(s.id) ?? Number(s.total_pallets ?? 0),
-      }));
+      const palletIds = palletRows.map((p) => p.id).filter(Boolean);
+      let palletLineMap = new Map<string, any[]>();
+      if (palletIds.length > 0) {
+        const { data: palletLinRows, error: palletLineError } = await sb
+          .from("shipment_pallet_lines")
+          .select("id,pallet_id,shipment_line_id,quantity")
+          .in("pallet_id", palletIds);
+        if (palletLineError) throw palletLineError;
+        for (const pl of (palletLinRows ?? []) as any[]) {
+          const current = palletLineMap.get(pl.pallet_id) ?? [];
+          current.push(pl);
+          palletLineMap.set(pl.pallet_id, current);
+        }
+      }
+
+      return ((shipmentRows ?? []) as any[]).map((s) => {
+        const shipmentPallets = (palletsByShipment.get(s.id) ?? []).map((p) => ({
+          ...p,
+          pallet_lines: palletLineMap.get(p.id) ?? [],
+        }));
+        return {
+          ...s,
+          status: normalizeLivraisonStatus(s.status),
+          client_entity: s.client_id ? clientMap.get(s.client_id) ?? null : null,
+          lines: linesByShipment.get(s.id) ?? [],
+          pallets: shipmentPallets,
+          pallet_count: shipmentPallets.length,
+        };
+      });
     },
   });
 
