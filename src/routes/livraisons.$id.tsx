@@ -256,8 +256,8 @@ function LivraisonDetail() {
         <h2 className="text-sm font-semibold mb-3">Statut shipment</h2>
         <div className="flex flex-wrap gap-2 mb-3">
           <Button variant="outline" disabled={!canSetReady || updateStatus.isPending} onClick={() => updateStatus.mutate("ready")}>Préparer</Button>
-          <Button variant="outline" disabled={!canSetShipped || updateStatus.isPending} onClick={() => updateStatus.mutate("shipped")}>Charger</Button>
-          <Button variant="outline" disabled={!canSetDelivered || updateStatus.isPending} onClick={() => updateStatus.mutate("delivered")}>Expédier</Button>
+          <Button variant="outline" disabled={!canSetShipped || updateStatus.isPending} onClick={() => updateStatus.mutate("shipped")}>Expédier</Button>
+          <Button variant="outline" disabled={!canSetDelivered || updateStatus.isPending} onClick={() => updateStatus.mutate("delivered")}>Livrer</Button>
         </div>
       </div>
     </div>

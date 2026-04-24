@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Boxes, Factory, Flame, TrendingDown } from "lucide-react";
+import { AlertTriangle, Boxes, Factory, Flame, PackageX, TrendingDown, Truck } from "lucide-react";
 import { fmtInt } from "@/lib/format";
 import { normalizeLivraisonStatus, normalizeProductionStatus, productionStatusMeta } from "@/lib/domain";
 import { UI } from "@/lib/uiLabels";
@@ -180,17 +180,19 @@ function Dashboard() {
     return { ...c, stockBrut, stock };
   });
 
-  const totalStock = composantsWithStock.reduce((s: number, c: any) => s + Number(c.stock ?? 0), 0);
+  const totalStock = composantsWithStock.reduce((s: number, c: any) => s + Number(c.stockBrut ?? 0), 0);
   const totalReserve = composantsWithStock.reduce((s: number, c: any) => s + Math.max(0, Number(c.stockBrut ?? 0) - Number(c.stock ?? 0)), 0);
   const totalDisponible = composantsWithStock.reduce((s: number, c: any) => s + Number(c.stock ?? 0), 0);
-  const alertes = (composants.data ?? []).filter((c: any) => {
-    const dispo = Number(((composantsWithStock.find((row: any) => row.id === c.id) ?? {}).stock ?? 0));
-    return (c.is_active ?? true) && dispo <= Number(c.min_stock ?? 0);
-  });
+  const alertes = composantsWithStock.filter((c: any) => (c.is_active ?? true) && Number(c.stock ?? 0) <= Number(c.min_stock ?? 0));
+  const ruptureCount = composantsWithStock.filter((c: any) => (c.is_active ?? true) && Number(c.stock ?? 0) <= 0).length;
+  const critiqueCount = composantsWithStock.filter((c: any) => (c.is_active ?? true) && Number(c.stock ?? 0) > 0 && Number(c.stock ?? 0) <= Number(c.min_stock ?? 0)).length;
   const ordersList: any[] = (orders.data ?? []) as any[];
   const enCours = ordersList.filter((o) => String(o.status) === "in_progress");
   const prioritaires = ordersList.filter((o) => String(o.status) === "priority" || Number(o.priority ?? 0) === 1);
+  const ordresDone = ordersList.filter((o) => String(o.status) === "done");
   const shipmentsReady = ((shipments.data ?? []) as any[]).filter((s) => String(s.status ?? "") === "ready");
+  const shipmentsInProgress = ((shipments.data ?? []) as any[]).filter((s) => String(s.status ?? "") === "shipped");
+  const shipmentsDelivered = ((shipments.data ?? []) as any[]).filter((s) => String(s.status ?? "") === "delivered");
   const openCommercialOrders = ((commercialOrders.data ?? []) as any[]).filter((o) => !["done", "delivered", "canceled", "cancelled"].includes(String(o.status ?? "")));
 
   const componentDemandByOrder = new Map<string, number>();
@@ -238,14 +240,26 @@ function Dashboard() {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 xl:grid-cols-5 gap-2 md:gap-3 mb-4">
-        <KPI icon={<Boxes className="h-4 w-4" />} label="Stock total (pièces)" value={fmtInt(totalStock)} to="/stock" cta="Voir stock" />
-        <KPI icon={<Boxes className="h-4 w-4 text-info" />} label="Stock réservé" value={fmtInt(totalReserve)} to="/stock" cta="Réserver" />
-        <KPI icon={<Boxes className="h-4 w-4 text-success" />} label="Stock disponible" value={fmtInt(totalDisponible)} to="/stock" cta="Sortie" />
-        <KPI icon={<TrendingDown className="h-4 w-4 text-warning" />} label="Composants en alerte" value={String(alertes.length)} accent={alertes.length > 0 ? "warning" : undefined} to="/stock" cta="Corriger" />
-        <KPI icon={<Factory className="h-4 w-4 text-info" />} label={`${UI.production_orders} en cours`} value={String(enCours.length)} to="/production" cta="Reprendre" />
-        <KPI icon={<Flame className="h-4 w-4 text-destructive" />} label="OF urgents" value={String(prioritaires.length)} accent={prioritaires.length > 0 ? "destructive" : undefined} to="/production" cta="Traiter" />
-        <KPI icon={<TrendingDown className="h-4 w-4 text-info" />} label="Livraisons prêtes" value={String(shipmentsReady.length)} to="/livraisons" cta="Expédier" />
+      <div className="space-y-2 mb-4">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Stock</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+          <KPI icon={<Boxes className="h-4 w-4" />} label="Stock total (pièces)" value={fmtInt(totalStock)} to="/stock" cta="Voir stock" />
+          <KPI icon={<Boxes className="h-4 w-4 text-success" />} label="Stock disponible" value={fmtInt(totalDisponible)} to="/stock" cta="Sortie" />
+          <KPI icon={<TrendingDown className="h-4 w-4 text-warning" />} label="Critique (seuil min)" value={String(critiqueCount)} accent={critiqueCount > 0 ? "warning" : undefined} to="/stock" cta="Corriger" />
+          <KPI icon={<PackageX className="h-4 w-4 text-destructive" />} label="Rupture" value={String(ruptureCount)} accent={ruptureCount > 0 ? "destructive" : undefined} to="/stock" cta="Corriger" />
+        </div>
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground pt-1">Fabrication</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
+          <KPI icon={<Factory className="h-4 w-4 text-info" />} label="OF en cours" value={String(enCours.length)} to="/production" cta="Reprendre" />
+          <KPI icon={<Flame className="h-4 w-4 text-destructive" />} label="OF urgents" value={String(prioritaires.length)} accent={prioritaires.length > 0 ? "destructive" : undefined} to="/production" cta="Traiter" />
+          <KPI icon={<Factory className="h-4 w-4 text-success" />} label="OF terminés" value={String(ordresDone.length)} to="/production" cta="Voir" />
+        </div>
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground pt-1">Livraisons</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
+          <KPI icon={<Truck className="h-4 w-4 text-info" />} label="Prêtes à expédier" value={String(shipmentsReady.length)} to="/livraisons" cta="Expédier" />
+          <KPI icon={<Truck className="h-4 w-4 text-warning" />} label="En cours d'expédition" value={String(shipmentsInProgress.length)} to="/livraisons" cta="Suivre" />
+          <KPI icon={<Truck className="h-4 w-4 text-success" />} label="Livrées" value={String(shipmentsDelivered.length)} to="/livraisons" cta="Voir" />
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-3 mb-4">

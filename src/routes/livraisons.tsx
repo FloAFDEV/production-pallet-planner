@@ -238,8 +238,8 @@ function LivraisonsPage() {
               <CardContent>
                 <div className="mb-2 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" disabled={!canPrepare || transitionShipment.isPending} onClick={() => transitionShipment.mutate({ id: s.id, status: "ready" })}>Préparer</Button>
-                  <Button size="sm" variant="outline" disabled={!canLoad || transitionShipment.isPending} onClick={() => transitionShipment.mutate({ id: s.id, status: "shipped" })}>Charger</Button>
-                  <Button size="sm" variant="outline" disabled={!canShip || transitionShipment.isPending} onClick={() => transitionShipment.mutate({ id: s.id, status: "delivered" })}>Expédier</Button>
+                  <Button size="sm" variant="outline" disabled={!canLoad || transitionShipment.isPending} onClick={() => transitionShipment.mutate({ id: s.id, status: "shipped" })}>Expédier</Button>
+                  <Button size="sm" variant="outline" disabled={!canShip || transitionShipment.isPending} onClick={() => transitionShipment.mutate({ id: s.id, status: "delivered" })}>Livrer</Button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
