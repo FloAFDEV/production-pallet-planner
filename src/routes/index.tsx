@@ -325,16 +325,18 @@ function Dashboard() {
             ) : (
               <ul className="divide-y divide-border">
                 {alertes.map((c: any) => {
-                  const dispo = Number(((composantsWithStock.find((row: any) => row.id === c.id) ?? {}).stock ?? 0));
+                  const row = composantsWithStock.find((row: any) => row.id === c.id) ?? {};
+                  const dispo = Number(row.stock ?? 0);
+                  const minStock = Number(row.min_stock ?? 0);
                   return (
-                  <li key={c.id} className="py-2.5 flex items-center justify-between text-sm">
-                    <div>
+                  <li key={c.id} className="py-2.5 flex items-center justify-between text-sm gap-3">
+                    <div className="min-w-0 flex-1">
                       <div className="font-medium">{c.name}</div>
                       <div className="text-xs text-muted-foreground font-mono">{c.reference}</div>
                     </div>
-                    <div className="text-right">
+                    <div className="flex-shrink-0 text-right">
                       <div className="font-mono font-semibold text-destructive">{fmtInt(dispo)}</div>
-                      <div className="text-[11px] text-muted-foreground">stock {fmtInt(dispo)}</div>
+                      <div className="text-[11px] text-muted-foreground">min. {fmtInt(minStock)}</div>
                     </div>
                     <Link to="/stock" className="inline-flex items-center rounded-sm border border-input px-2 py-0.5 text-xs hover:bg-accent">Corriger</Link>
                   </li>
