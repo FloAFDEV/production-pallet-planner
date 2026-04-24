@@ -40,22 +40,6 @@ export const shipmentStatusMeta: Record<string, { label: string; cls: string }> 
   delivered: { label: "Livré", cls: "bg-success/15 text-success border border-success/30" },
 };
 
-const legacyProductionStatusMap: Record<string, ProductionStatus> = {
-  brouillon: "draft",
-  pret: "draft",
-  ready: "draft",
-  en_cours: "in_progress",
-  en_pause: "in_progress",
-  termine: "done",
-  annule: "done",
-};
-
-const legacyLivraisonStatusMap: Record<string, LivraisonStatus> = {
-  brouillon: "draft",
-  pret: "ready",
-  expedie: "shipped",
-  livre: "delivered",
-};
 
 export function normalizeProductionStatus(status?: string | null): ProductionStatus {
   const value = String(status ?? "draft");
