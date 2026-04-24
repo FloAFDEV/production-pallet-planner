@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Boxes, Factory, Flame, TrendingDown } from "lucide-react";
 import { fmtInt } from "@/lib/format";
-import { productionStatusMeta } from "@/lib/domain";
+import { normalizeLivraisonStatus, normalizeProductionStatus, productionStatusMeta } from "@/lib/domain";
 import { UI } from "@/lib/uiLabels";
 
 export const Route = createFileRoute("/")({
@@ -80,7 +80,9 @@ function Dashboard() {
         .order("created_at", { ascending: false });
       if (error) throw error;
 
-      const activeOrders = ((ordersData ?? []) as any[]).filter((o) => ["draft", "brouillon", "pret", "in_progress", "en_cours", "en_pause", "priority"].includes(String(o.status)));
+      const activeOrders = ((ordersData ?? []) as any[])
+        .map((o) => ({ ...o, status: normalizeProductionStatus(o.status) }))
+        .filter((o) => ["draft", "in_progress", "priority"].includes(String(o.status)));
 
       const coffretIds = Array.from(new Set(activeOrders.map((o) => o.coffret_id).filter(Boolean)));
       let coffretMap = new Map<string, any>();
@@ -166,7 +168,7 @@ function Dashboard() {
         .select("id,reference,status,client_id,created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as any[];
+      return ((data ?? []) as any[]).map((row) => ({ ...row, status: normalizeLivraisonStatus(row.status) }));
     },
   });
 
@@ -186,9 +188,9 @@ function Dashboard() {
     return (c.is_active ?? true) && dispo <= Number(c.min_stock ?? 0);
   });
   const ordersList: any[] = (orders.data ?? []) as any[];
-  const enCours = ordersList.filter((o) => ["in_progress", "en_cours", "en_pause"].includes(String(o.status)));
-  const prioritaires = ordersList.filter((o) => Number(o.priority ?? 0) === 1);
-  const shipmentsReady = ((shipments.data ?? []) as any[]).filter((s) => ["ready", "pret"].includes(String(s.status ?? "")));
+  const enCours = ordersList.filter((o) => String(o.status) === "in_progress");
+  const prioritaires = ordersList.filter((o) => String(o.status) === "priority" || Number(o.priority ?? 0) === 1);
+  const shipmentsReady = ((shipments.data ?? []) as any[]).filter((s) => String(s.status ?? "") === "ready");
   const openCommercialOrders = ((commercialOrders.data ?? []) as any[]).filter((o) => !["done", "delivered", "canceled", "cancelled"].includes(String(o.status ?? "")));
 
   const componentDemandByOrder = new Map<string, number>();

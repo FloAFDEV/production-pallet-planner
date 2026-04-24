@@ -12,7 +12,20 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { fmtDateTime, fmtInt } from "@/lib/format";
 import { record_stock_movement } from "@/lib/stockMovements";
-import { getStockHealth, stockHealthMeta } from "@/lib/domain";
+import { getStockHealth, stockHealthMeta, type StockHealth } from "@/lib/domain";
+
+type StockRow = {
+  id: string;
+  name: string;
+  reference?: string | null;
+  min_stock?: number | null;
+  location?: string | null;
+  is_active?: boolean | null;
+  stockActuel: number;
+  stockDisponible: number;
+  stockReserve: number;
+  health: StockHealth;
+};
 
 export const Route = createFileRoute("/stock")({
   head: () => ({
@@ -94,7 +107,7 @@ function StockPage() {
     },
   });
 
-  const stockRows = useMemo(() => {
+  const stockRows = useMemo<StockRow[]>(() => {
     return (composants.data ?? []).map((c: any) => {
       const stockActuel = Number(c.stock ?? 0);
       const stockDisponible = stockAgg.data?.stockById.get(c.id) ?? stockActuel;
@@ -111,20 +124,20 @@ function StockPage() {
     });
   }, [composants.data, stockAgg.data]);
 
-  const filteredRows = useMemo(() => {
+  const filteredRows = useMemo<StockRow[]>(() => {
     if (filter === "all") return stockRows;
     return stockRows.filter((row) => row.health === filter);
   }, [filter, stockRows]);
 
   const selectedComponent = useMemo(() => {
-    return stockRows.find((row: any) => row.id === selectedComponentId) ?? null;
+    return stockRows.find((row) => row.id === selectedComponentId) ?? null;
   }, [stockRows, selectedComponentId]);
 
   const counts = useMemo(() => ({
     all: stockRows.length,
-    rupture: stockRows.filter((row) => row.health === "rupture").length,
-    critical: stockRows.filter((row) => row.health === "critical").length,
-    ok: stockRows.filter((row) => row.health === "ok").length,
+    rupture: stockRows.filter((row: StockRow) => row.health === "rupture").length,
+    critical: stockRows.filter((row: StockRow) => row.health === "critical").length,
+    ok: stockRows.filter((row: StockRow) => row.health === "ok").length,
   }), [stockRows]);
 
   return (
@@ -209,7 +222,7 @@ function StockPage() {
                     </td>
                   </tr>
                 ) : filteredRows.map((c: any) => {
-                  const meta = stockHealthMeta[c.health];
+                  const meta = stockHealthMeta[c.health as StockHealth];
                   return (
                     <tr key={c.id} className="border-t border-border">
                       <td className="p-3">
@@ -331,7 +344,7 @@ function DetailDialog({
   component: any | null;
   onCreateMovement: () => void;
 }) {
-  const meta = component ? stockHealthMeta[component.health] : null;
+  const meta = component ? stockHealthMeta[component.health as StockHealth] : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -345,7 +358,9 @@ function DetailDialog({
           <div className="space-y-4">
             <div>
               <div className="text-lg font-semibold">{component.name}</div>
-              <div className="mt-1 inline-flex items-center rounded-sm px-2 py-0.5 text-[11px] font-medium ${meta?.cls ?? "bg-muted text-muted-foreground"}">{meta?.label ?? "Aucune donnée disponible"}</div>
+              <div className={`mt-1 inline-flex items-center rounded-sm px-2 py-0.5 text-[11px] font-medium ${meta?.cls ?? "bg-muted text-muted-foreground"}`}>
+                {meta?.label ?? "Aucune donnée disponible"}
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-3 text-sm">
               <div className="rounded-md border border-border p-3">

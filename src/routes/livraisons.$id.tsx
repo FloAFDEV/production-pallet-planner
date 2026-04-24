@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtDate, fmtInt, fmtKg, fmtPalette } from "@/lib/format";
-import { livraisonStatusMeta, type LivraisonStatus } from "@/lib/domain";
+import { livraisonStatusMeta, normalizeLivraisonStatus, type LivraisonStatus } from "@/lib/domain";
 import { UI } from "@/lib/uiLabels";
 import { Button } from "@/components/ui/button";
 import agecetLogo from "@/assets/logo_agecet_hands.jpg";
@@ -73,6 +73,7 @@ function LivraisonDetail() {
 
       return {
         ...shipment,
+        status: normalizeLivraisonStatus(shipment.status),
         client_entity: clientEntity,
         lines: ((lineRows ?? []) as any[]).map((l) => ({ ...l, variant: variantMap.get(l.product_variant_id) ?? null })),
         pallets: palletRows ?? [],

@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Trash2, Truck } from "lucide-react";
 import { fmtDate, fmtInt, fmtKg, fmtPalette } from "@/lib/format";
-import { livraisonStatusMeta, type LivraisonStatus } from "@/lib/domain";
+import { livraisonStatusMeta, normalizeLivraisonStatus, type LivraisonStatus } from "@/lib/domain";
 import { UI } from "@/lib/uiLabels";
 import agecetLogo from "@/assets/logo_agecet_hands.jpg";
 
@@ -147,6 +147,7 @@ function LivraisonsPage() {
 
       return ((shipmentRows ?? []) as any[]).map((s) => ({
         ...s,
+        status: normalizeLivraisonStatus(s.status),
         client_entity: s.client_id ? clientMap.get(s.client_id) ?? null : null,
         lines: linesByShipment.get(s.id) ?? [],
         pallet_count: palletsByShipment.get(s.id) ?? Number(s.total_pallets ?? 0),

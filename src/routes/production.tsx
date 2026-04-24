@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { fmtInt } from "@/lib/format";
-import { productionStatusMeta } from "@/lib/domain";
+import { normalizeProductionStatus, productionStatusMeta } from "@/lib/domain";
 import { getProductionFeasibility } from "@/lib/getProductionFeasibility";
 
 type ProdRow = { id: string; coffret_id: string; quantity: number };
@@ -107,7 +107,10 @@ function ProductionPage() {
         .order("created_at", { ascending: false });
       if (error) throw error;
 
-      const filtered = (rawOrders ?? []) as any[];
+      const filtered = ((rawOrders ?? []) as any[]).map((row) => ({
+        ...row,
+        status: normalizeProductionStatus(row.status),
+      }));
       const ids = Array.from(new Set(filtered.map((o) => o.coffret_id).filter(Boolean)));
 
       let coffretMap = new Map<string, any>();
@@ -154,14 +157,9 @@ function ProductionPage() {
 
   const transition = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: "in_progress" | "done" }) => {
-      const statusMap: Record<string, string> = {
-        in_progress: "in_progress",
-        done: "done",
-      };
-
       const { data, error } = await sb.rpc("transition_production_order_status", {
         p_order_id: id,
-        p_status: statusMap[status] ?? status,
+        p_status: status,
       });
       if (error) throw error;
       if (data && data.success === false) {
