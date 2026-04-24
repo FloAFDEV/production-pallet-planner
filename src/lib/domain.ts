@@ -59,18 +59,23 @@ const legacyLivraisonStatusMap: Record<string, LivraisonStatus> = {
 
 export function normalizeProductionStatus(status?: string | null): ProductionStatus {
   const value = String(status ?? "draft");
+  // Source unique : UNIQUEMENT canoniques en production_orders
+  // Les statuts legacy ne doivent jamais être stockés
   if (value === "draft" || value === "in_progress" || value === "done" || value === "priority") {
     return value;
   }
-  return legacyProductionStatusMap[value] ?? "draft";
+  // Fallback strict : default à draft si donnée inattendue
+  return "draft";
 }
 
 export function normalizeLivraisonStatus(status?: string | null): LivraisonStatus {
   const value = String(status ?? "draft");
+  // Source unique : UNIQUEMENT canoniques en shipments
   if (value === "draft" || value === "ready" || value === "shipped" || value === "delivered") {
     return value;
   }
-  return legacyLivraisonStatusMap[value] ?? "draft";
+  // Fallback strict : default à draft si donnée inattendue
+  return "draft";
 }
 
 export type StockHealth = "ok" | "critical" | "rupture";
