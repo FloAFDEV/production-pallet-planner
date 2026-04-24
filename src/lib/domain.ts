@@ -1,10 +1,8 @@
 export type ProductionStatus =
   | "draft"
-  | "ready"
   | "in_progress"
-  | "paused"
   | "done"
-  | "cancelled";
+  | "priority";
 
 export type ProductionPriority = 0 | 1;
 
@@ -18,16 +16,9 @@ export type ShipmentStatus = LivraisonStatus;
 
 export const productionStatusMeta: Record<string, { label: string; cls: string }> = {
   draft: { label: "À produire", cls: "bg-muted text-muted-foreground" },
-  brouillon: { label: "À produire", cls: "bg-muted text-muted-foreground" },
-  pret: { label: "À produire", cls: "bg-muted text-muted-foreground" },
   in_progress: { label: "En cours", cls: "bg-info/15 text-info border border-info/30" },
-  en_cours: { label: "En cours", cls: "bg-info/15 text-info border border-info/30" },
-  en_pause: { label: "En cours", cls: "bg-info/15 text-info border border-info/30" },
   done: { label: "Terminé", cls: "bg-success/15 text-success border border-success/30" },
-  termine: { label: "Terminé", cls: "bg-success/15 text-success border border-success/30" },
-  annule: { label: "Terminé", cls: "bg-success/15 text-success border border-success/30" },
   priority: { label: "Urgent", cls: "bg-destructive/15 text-destructive border border-destructive/30" },
-  ready: { label: "À produire", cls: "bg-muted text-muted-foreground" },
 };
 
 export const productionPriorityMeta: Record<ProductionPriority, { label: string; cls: string }> = {
@@ -37,25 +28,64 @@ export const productionPriorityMeta: Record<ProductionPriority, { label: string;
 
 export const livraisonStatusMeta: Record<string, { label: string; cls: string }> = {
   draft: { label: "À expédier", cls: "bg-muted text-muted-foreground" },
-  brouillon: { label: "À expédier", cls: "bg-muted text-muted-foreground" },
   ready: { label: "Prêt", cls: "bg-info/15 text-info border border-info/30" },
-  pret: { label: "Prêt", cls: "bg-info/15 text-info border border-info/30" },
   shipped: { label: "Expédié", cls: "bg-warning/15 text-warning border border-warning/30" },
-  expedie: { label: "Expédié", cls: "bg-warning/15 text-warning border border-warning/30" },
   delivered: { label: "Livré", cls: "bg-success/15 text-success border border-success/30" },
-  livre: { label: "Livré", cls: "bg-success/15 text-success border border-success/30" },
 };
 
 export const shipmentStatusMeta: Record<string, { label: string; cls: string }> = {
   draft: { label: "À expédier", cls: "bg-muted text-muted-foreground" },
-  brouillon: { label: "À expédier", cls: "bg-muted text-muted-foreground" },
   ready: { label: "Prêt", cls: "bg-info/15 text-info border border-info/30" },
-  pret: { label: "Prêt", cls: "bg-info/15 text-info border border-info/30" },
   shipped: { label: "Expédié", cls: "bg-warning/15 text-warning border border-warning/30" },
-  expedie: { label: "Expédié", cls: "bg-warning/15 text-warning border border-warning/30" },
   delivered: { label: "Livré", cls: "bg-success/15 text-success border border-success/30" },
-  livre: { label: "Livré", cls: "bg-success/15 text-success border border-success/30" },
 };
+
+const legacyProductionStatusMap: Record<string, ProductionStatus> = {
+  brouillon: "draft",
+  pret: "draft",
+  ready: "draft",
+  en_cours: "in_progress",
+  en_pause: "in_progress",
+  termine: "done",
+  annule: "done",
+};
+
+const legacyLivraisonStatusMap: Record<string, LivraisonStatus> = {
+  brouillon: "draft",
+  pret: "ready",
+  expedie: "shipped",
+  livre: "delivered",
+};
+
+export function normalizeProductionStatus(status?: string | null): ProductionStatus {
+  const value = String(status ?? "draft");
+  if (value === "draft" || value === "in_progress" || value === "done" || value === "priority") {
+    return value;
+  }
+  return legacyProductionStatusMap[value] ?? "draft";
+}
+
+export function normalizeLivraisonStatus(status?: string | null): LivraisonStatus {
+  const value = String(status ?? "draft");
+  if (value === "draft" || value === "ready" || value === "shipped" || value === "delivered") {
+    return value;
+  }
+  return legacyLivraisonStatusMap[value] ?? "draft";
+}
+
+export type StockHealth = "ok" | "critical" | "rupture";
+
+export const stockHealthMeta: Record<StockHealth, { label: string; cls: string }> = {
+  ok: { label: "OK", cls: "bg-success/15 text-success border border-success/30" },
+  critical: { label: "CRITIQUE", cls: "bg-warning/15 text-warning border border-warning/30" },
+  rupture: { label: "RUPTURE", cls: "bg-destructive/15 text-destructive border border-destructive/30" },
+};
+
+export function getStockHealth(stock: number, minStock: number): StockHealth {
+  if (stock <= 0) return "rupture";
+  if (stock <= minStock) return "critical";
+  return "ok";
+}
 
 export function formatClientAddress(client: {
   address?: string | null;
